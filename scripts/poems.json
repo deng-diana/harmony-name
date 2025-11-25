@@ -1,0 +1,142 @@
+[
+    {
+      "title": "静夜思",
+      "author": "李白",
+      "dynasty": "唐",
+      "content": "床前明月光，疑是地上霜。举头望明月，低头思故乡。",
+      "tags": ["Water", "Metal", "Moon", "Quiet"]
+    },
+    {
+      "title": "春晓",
+      "author": "孟浩然",
+      "dynasty": "唐",
+      "content": "春眠不觉晓，处处闻啼鸟。夜来风雨声，花落知多少。",
+      "tags": ["Wood", "Water", "Spring", "Nature"]
+    },
+    {
+      "title": "登鹳雀楼",
+      "author": "王之涣",
+      "dynasty": "唐",
+      "content": "白日依山尽，黄河入海流。欲穷千里目，更上一层楼。",
+      "tags": ["Fire", "Water", "Earth", "Ambition"]
+    },
+    {
+      "title": "望庐山瀑布",
+      "author": "李白",
+      "dynasty": "唐",
+      "content": "日照香炉生紫烟，遥看瀑布挂前川。飞流直下三千尺，疑是银河落九天。",
+      "tags": ["Fire", "Water", "Magnificent"]
+    },
+    {
+      "title": "江雪",
+      "author": "柳宗元",
+      "dynasty": "唐",
+      "content": "千山鸟飞绝，万径人踪灭。孤舟蓑笠翁，独钓寒江雪。",
+      "tags": ["Water", "Metal", "Winter", "Solitude"]
+    },
+    {
+      "title": "赋得古原草送别",
+      "author": "白居易",
+      "dynasty": "唐",
+      "content": "离离原上草，一岁一枯荣。野火烧不尽，春风吹又生。",
+      "tags": ["Wood", "Fire", "Resilience"]
+    },
+    {
+      "title": "山居秋暝",
+      "author": "王维",
+      "dynasty": "唐",
+      "content": "空山新雨后，天气晚来秋。明月松间照，清泉石上流。",
+      "tags": ["Wood", "Water", "Quiet", "Nature"]
+    },
+    {
+      "title": "咏鹅",
+      "author": "骆宾王",
+      "dynasty": "唐",
+      "content": "鹅鹅鹅，曲项向天歌。白毛浮绿水，红掌拨清波。",
+      "tags": ["Water", "Wood", "Lively"]
+    },
+    {
+      "title": "早发白帝城",
+      "author": "李白",
+      "dynasty": "唐",
+      "content": "朝辞白帝彩云间，千里江陵一日还。两岸猿声啼不住，轻舟已过万重山。",
+      "tags": ["Water", "Metal", "Speed", "Travel"]
+    },
+    {
+      "title": "绝句",
+      "author": "杜甫",
+      "dynasty": "唐",
+      "content": "两个黄鹂鸣翠柳，一行白鹭上青天。窗含西岭千秋雪，门泊东吴万里船。",
+      "tags": ["Wood", "Water", "Metal", "Spring"]
+    },
+    {
+      "title": "游子吟",
+      "author": "孟郊",
+      "dynasty": "唐",
+      "content": "慈母手中线，游子身上衣。临行密密缝，意恐迟迟归。谁言寸草心，报得三春晖。",
+      "tags": ["Fire", "Wood", "Love", "Family"]
+    },
+    {
+      "title": "竹里馆",
+      "author": "王维",
+      "dynasty": "唐",
+      "content": "独坐幽篁里，弹琴复长啸。深林人不知，明月来相照。",
+      "tags": ["Wood", "Metal", "Music", "Quiet"]
+    },
+    {
+      "title": "送元二使安西",
+      "author": "王维",
+      "dynasty": "唐",
+      "content": "渭城朝雨浥轻尘，客舍青青柳色新。劝君更尽一杯酒，西出阳关无故人。",
+      "tags": ["Water", "Wood", "Friendship"]
+    },
+    {
+      "title": "清明",
+      "author": "杜牧",
+      "dynasty": "唐",
+      "content": "清明时节雨纷纷，路上行人欲断魂。借问酒家何处有？牧童遥指杏花村。",
+      "tags": ["Water", "Wood", "Spring"]
+    },
+    {
+      "title": "乐游原",
+      "author": "李商隐",
+      "dynasty": "唐",
+      "content": "向晚意不适，驱车登古原。夕阳无限好，只是近黄昏。",
+      "tags": ["Fire", "Earth", "Sunset"]
+    },
+    {
+      "title": "相思",
+      "author": "王维",
+      "dynasty": "唐",
+      "content": "红豆生南国，春来发几枝。愿君多采撷，此物最相思。",
+      "tags": ["Wood", "Fire", "Love"]
+    },
+    {
+      "title": "枫桥夜泊",
+      "author": "张继",
+      "dynasty": "唐",
+      "content": "月落乌啼霜满天，江枫渔火对愁眠。姑苏城外寒山寺，夜半钟声到客船。",
+      "tags": ["Water", "Fire", "Metal", "Night"]
+    },
+    {
+      "title": "回乡偶书",
+      "author": "贺知章",
+      "dynasty": "唐",
+      "content": "少小离家老大回，乡音无改鬓毛衰。儿童相见不相识，笑问客从何处来。",
+      "tags": ["Time", "Home"]
+    },
+    {
+      "title": "凉州词",
+      "author": "王翰",
+      "dynasty": "唐",
+      "content": "葡萄美酒夜光杯，欲饮琵琶马上催。醉卧沙场君莫笑，古来征战几人回。",
+      "tags": ["Metal", "Fire", "Heroic"]
+    },
+    {
+      "title": "望岳",
+      "author": "杜甫",
+      "dynasty": "唐",
+      "content": "岱宗夫如何？齐鲁青未了。造化钟神秀，阴阳割昏晓。荡胸生曾云，决眦入归鸟。会当凌绝顶，一览众山小。",
+      "tags": ["Earth", "Wood", "Mountain", "Ambition"]
+    }
+  ]

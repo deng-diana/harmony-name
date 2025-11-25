@@ -1,61 +1,81 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
+import { searchPoems } from "../../../lib/retriever";
 
-const SYSTEM_PROMPT = `
-Role: You are a rigorous Chinese Cultural Scholar.
-Mission: Recommend 3 authentic Chinese names based on BaZi.
+// ⚠️ 这里的 maxDuration 是为了防止 Vercel/AWS Lambda 超时
+export const maxDuration = 60;
+export const dynamic = "force-dynamic";
 
---- CRITICAL RULES (STRICT MODE) ---
-1. **NO FAKE POEMS**: The "culturalHeritage" MUST be a real, verifiable classical text.
-2. **CHARACTER MATCH**: The "original" text MUST contain the EXACT characters used in the name.
-   - If name is "邓几青" (Deng Ji Qing), the poem MUST contain "几" AND "青".
-   - If you cannot find a poem with BOTH characters, DO NOT use that name. Pick a simpler name with a solid source.
-3. **HIGHLIGHTING**: Wrap ONLY the name characters in curly braces {}.
-   - Correct: "明月{几}时有？把酒问{青}天。"
-   - Wrong: "{明月}几时有" (Do not highlight extra words).
-4. **NAME LENGTH**: 
-   - You can generate 2-character names (Surname + 1 char) OR 3-character names (Surname + 2 chars).
-   - Mix them up based on what sounds best.
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
 
---- OUTPUT JSON FORMAT ---
-{
-  "balanceAdvice": "Your Earth energy flows best when...",
-  "names": [
-    {
-      "hanzi": "Surname + Name",
-      "pinyin": "Lǐ Yǎ Tíng",
-      "poeticMeaning": "A graceful willow swaying softly in the spring breeze", 
-      "culturalHeritage": {
-        "source": "Song Ci 《Butterfly Loves Flower》 by Ouyang Xiu",
-        "original": "庭院深{深}深几许，{杨}柳堆烟", 
-        "translation": "Deep, deep is the courtyard, where willows stack like mist..."
-      },
-      "anatomy": [
-        { "char": "李", "pinyin": "Lǐ", "meaning": "Plum Tree", "type": "Surname", "element": "Wood" },
-        { "char": "雅", "pinyin": "Yǎ", "meaning": "Elegant", "type": "Given Name", "element": "Wood" }
-      ],
-      "masterComment": "Since your Day Master is Weak Wood..."
-    }
-  ]
-}
+const createSystemPrompt = (contextPoems: string) => `
+Role: You are a world-class Chinese Cultural Consultant.
+Mission: Create 3 culturally profound Chinese names based on BaZi.
+
+--- CONTEXT (RETRIEVED POEMS) ---
+The following poems match the user's elements:
+${contextPoems}
+
+--- RULES ---
+1. **Source Priority**: 
+   - PRIORITY 1: Check the "CONTEXT" poems above first.
+   - PRIORITY 2: If the context poems do not fit the Surname/Elements well, you may cite other **authentic Chinese Classics** from your internal knowledge.
+   - **Acceptable Sources**: Tang/Song Poetry, Shijing (Book of Songs), Chu Ci, Idioms (Chengyu), I Ching, or Taoist/Confucian classics (Lunyu, Daodejing).
+
+2. **Strict Authenticity (Anti-Hallucination)**: 
+   - Whether using Context or Internal knowledge, the source MUST be real. 
+   - The "original" text MUST contain the EXACT characters used in the name.
+   - Wrap the name characters in curly braces {} in the "original" field.
+   - Example: "For name '子衿', source 'Shijing': 青青{子}{衿}，悠悠我心。"
+
+3. **Output**: Return valid JSON.
 `;
 
 export async function POST(request: Request) {
   try {
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) return NextResponse.json({ error: "API Key missing" }, { status: 500 });
-
-    const openai = new OpenAI({ apiKey });
     const body = await request.json();
-    
-    const { 
-      wuxing, gender, surnamePreference, specifiedSurname, 
-      dayMaster, bazi, strength, favourableElements, avoidElements 
+    const {
+      gender,
+      dayMaster,
+      strength,
+      favourableElements,
+      avoidElements,
+      surnamePreference,
+      specifiedSurname,
     } = body;
 
+    // 1. 检索
+    console.log(`🔍 Searching poems for: ${favourableElements.join(" ")}`);
+    // 搜索词加入 "classic", "idiom" 增加广度
+    const query = `Chinese classical poetry and idioms related to ${favourableElements.join(
+      " "
+    )} elements`;
+
+    let poemsContextText = "";
+    try {
+      const retrievedPoems = await searchPoems(query, 3);
+      poemsContextText = retrievedPoems
+        .map(
+          (p, i) =>
+            `[${i + 1}] Title:《${p.title}》 Author:${p.author} Content:${
+              p.content
+            }`
+        )
+        .join("\n");
+      console.log("📚 RAG Context:\n", poemsContextText);
+    } catch (e) {
+      console.warn("RAG Search failed, falling back to internal knowledge.");
+    }
+
+    // 2. 构建指令
     let surnameInstruction = "";
-    if (surnamePreference === 'specified' || surnamePreference === 'from_common') {
-      surnameInstruction = `MANDATORY SURNAME: "${specifiedSurname}". Use this surname.`;
+    if (
+      surnamePreference === "specified" ||
+      surnamePreference === "from_common"
+    ) {
+      surnameInstruction = `MANDATORY SURNAME: "${specifiedSurname}".`;
     } else {
       surnameInstruction = `RECOMMEND a surname that balances the Day Master (${dayMaster}).`;
     }
@@ -63,36 +83,34 @@ export async function POST(request: Request) {
     const userMessage = `
       User Profile:
       - Gender: ${gender}
-      - Day Master (Core Self): ${dayMaster}
-      - Strength: ${strength}
-      - Yong Shen (Favourable): ${favourableElements.join(', ')}
-      - Avoid: ${avoidElements.join(', ')}
+      - Day Master: ${dayMaster} (${strength})
+      - Favourable: ${favourableElements.join(", ")}
       
       ${surnameInstruction}
       
-      Task:
-      1. Generate 3 names (can be 2-char or 3-char).
-      2. STRICTLY verify that the poem citation contains the name characters.
-      3. If no poem fits a name, DISCARD the name and try another.
+      Task: Generate 3 names. 
+      Try to use the RAG Context. If not suitable, use Shijing, Chu Ci, or Idioms to ensure variety and fit.
     `;
 
+    // 3. 调用 AI
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [
-        { role: "system", content: SYSTEM_PROMPT },
+        { role: "system", content: createSystemPrompt(poemsContextText) },
         { role: "user", content: userMessage },
       ],
       response_format: { type: "json_object" },
-      temperature: 0.4, // 🔥 大幅降温：从 0.85 -> 0.4，让它变老实
+      temperature: 0.75, // 稍微提高一点点，因为来源变广了，需要一点灵活性
     });
 
     const content = completion.choices[0].message.content;
     if (!content) throw new Error("No content");
 
-    return NextResponse.json(JSON.parse(content));
+    console.log("🤖 AI Response Preview:", content.substring(0, 50) + "...");
 
+    return NextResponse.json(JSON.parse(content));
   } catch (error: any) {
-    console.error("❌ AI Error:", error);
+    console.error("❌ Error:", error);
     return NextResponse.json({ error: "Failed to generate" }, { status: 500 });
   }
 }
