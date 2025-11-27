@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
-import { searchPoems } from "../../../lib/retriever";
+import { searchPoems } from "@/src/lib/retriever";
 
-// ⚠️ 这里的 maxDuration 是为了防止 Vercel/AWS Lambda 超时
 export const maxDuration = 60;
 export const dynamic = "force-dynamic";
 
@@ -15,22 +14,40 @@ Role: You are a world-class Chinese Cultural Consultant.
 Mission: Create 3 culturally profound Chinese names based on BaZi.
 
 --- CONTEXT (RETRIEVED POEMS) ---
-The following poems match the user's elements:
 ${contextPoems}
 
 --- RULES ---
 1. **Source Priority**: 
-   - PRIORITY 1: Check the "CONTEXT" poems above first.
-   - PRIORITY 2: If the context poems do not fit the Surname/Elements well, you may cite other **authentic Chinese Classics** from your internal knowledge.
-   - **Acceptable Sources**: Tang/Song Poetry, Shijing (Book of Songs), Chu Ci, Idioms (Chengyu), I Ching, or Taoist/Confucian classics (Lunyu, Daodejing).
+   - PRIORITY 1: Use characters from the "CONTEXT" poems above.
+   - PRIORITY 2: If context doesn't fit, use other **authentic Chinese Classics** (Tang/Song Poetry, Shijing, Chu Ci, Idioms).
 
-2. **Strict Authenticity (Anti-Hallucination)**: 
-   - Whether using Context or Internal knowledge, the source MUST be real. 
-   - The "original" text MUST contain the EXACT characters used in the name.
-   - Wrap the name characters in curly braces {} in the "original" field.
-   - Example: "For name '子衿', source 'Shijing': 青青{子}{衿}，悠悠我心。"
+2. **LITERAL MATCH CHECK (CRITICAL)**: 
+   - The "original" text MUST contain the characters used in the name.
+   - **IF NAME IS "清心"**: The poem MUST contain "清" AND "心".
+   - **WRONG**: Citing a poem about "sadness" that doesn't have the word "清心".
+   - **RIGHT**: "明月松间照，{清}泉石上流... (Heart/Mind implied or explicitly present)".
+   - **Better Strategy**: Find the poem FIRST, then pick the name characters FROM the poem.
 
-3. **Output**: Return valid JSON.
+3. **JSON SCHEMA**:
+   {
+     "names": [
+       {
+         "hanzi": "Surname + Name",
+         "pinyin": "...",
+         "poeticMeaning": "...",
+         "culturalHeritage": {
+           "source": "Tang Poem 《...》 by ...",
+           "original": "Full poetic sentence here with {highlight}...", 
+           "translation": "..."
+         },
+         "anatomy": [
+           { "char": "...", "meaning": "...", "type": "Surname", "element": "..." },
+           { "char": "...", "meaning": "...", "type": "Given Name", "element": "..." }
+         ],
+         "masterComment": "Analysis..."
+       }
+     ]
+   }
 `;
 
 export async function POST(request: Request) {
@@ -44,18 +61,18 @@ export async function POST(request: Request) {
       avoidElements,
       surnamePreference,
       specifiedSurname,
+      recommendedNameLength,
     } = body;
 
     // 1. 检索
     console.log(`🔍 Searching poems for: ${favourableElements.join(" ")}`);
-    // 搜索词加入 "classic", "idiom" 增加广度
     const query = `Chinese classical poetry and idioms related to ${favourableElements.join(
       " "
     )} elements`;
 
     let poemsContextText = "";
     try {
-      const retrievedPoems = await searchPoems(query, 3);
+      const retrievedPoems = await searchPoems(query, 5); // 找5首
       poemsContextText = retrievedPoems
         .map(
           (p, i) =>
@@ -66,10 +83,9 @@ export async function POST(request: Request) {
         .join("\n");
       console.log("📚 RAG Context:\n", poemsContextText);
     } catch (e) {
-      console.warn("RAG Search failed, falling back to internal knowledge.");
+      console.warn("RAG Search failed, falling back.");
     }
 
-    // 2. 构建指令
     let surnameInstruction = "";
     if (
       surnamePreference === "specified" ||
@@ -88,8 +104,13 @@ export async function POST(request: Request) {
       
       ${surnameInstruction}
       
-      Task: Generate 3 names. 
-      Try to use the RAG Context. If not suitable, use Shijing, Chu Ci, or Idioms to ensure variety and fit.
+      **NAMING TASK**:
+      1. Target Length: ${recommendedNameLength}
+      2. **Step-by-Step**:
+         - Step A: Find a poem from Context or Memory that matches the Favourable Elements.
+         - Step B: EXTRACT 1 or 2 characters DIRECTLY from that poem to form the Given Name.
+         - Step C: Combine with Surname.
+      3. **VERIFY**: Do the characters actually exist in the poem? If no, go back to Step A.
     `;
 
     // 3. 调用 AI
@@ -100,13 +121,11 @@ export async function POST(request: Request) {
         { role: "user", content: userMessage },
       ],
       response_format: { type: "json_object" },
-      temperature: 0.75, // 稍微提高一点点，因为来源变广了，需要一点灵活性
+      temperature: 0.6, // 再次降温，让它更守规矩
     });
 
     const content = completion.choices[0].message.content;
     if (!content) throw new Error("No content");
-
-    console.log("🤖 AI Response Preview:", content.substring(0, 50) + "...");
 
     return NextResponse.json(JSON.parse(content));
   } catch (error: any) {

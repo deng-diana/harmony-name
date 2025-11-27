@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import {
   calculateBazi,
   SHICHEN_MAPPING,
@@ -13,11 +13,14 @@ import {
   ArrowRight,
   RefreshCw,
   Volume2,
+  Sparkles,
+  Search,
   CloudSun,
   Scale,
-  Search,
+  MapPin,
 } from "lucide-react";
 
+// --- Interfaces ---
 interface NameChar {
   char: string;
   pinyin: string;
@@ -41,6 +44,17 @@ interface ApiResponse {
   names: NameOption[];
 }
 
+// 🆕 新增：城市数据结构
+interface City {
+  id: number;
+  name: string;
+  latitude: number;
+  longitude: number;
+  country: string;
+  admin1?: string; // 省/州
+  timezone: string;
+}
+
 const HighlightText = ({ text }: { text: string }) => {
   if (!text) return null;
   const parts = text.split(/\b(Wood|Fire|Earth|Metal|Water)\b/g);
@@ -59,18 +73,6 @@ const HighlightText = ({ text }: { text: string }) => {
     </span>
   );
 };
-
-const ELEMENT_BADGE_STYLES: Record<string, string> = {
-  Wood: "bg-emerald-50 text-emerald-700 border-emerald-100",
-  Fire: "bg-rose-50 text-rose-600 border-rose-100",
-  Earth: "bg-amber-50 text-amber-700 border-amber-100",
-  Metal: "bg-slate-50 text-slate-600 border-slate-200",
-  Water: "bg-sky-50 text-sky-600 border-sky-100",
-};
-
-const getElementBadgeClasses = (element?: string) =>
-  ELEMENT_BADGE_STYLES[element || ""] ||
-  "bg-stone-50 text-stone-500 border-stone-200";
 
 const FiveElementsChart = ({
   wuxing,
@@ -168,6 +170,13 @@ export default function Home() {
   const [birthDate, setBirthDate] = useState("");
   const [birthTime, setBirthTime] = useState("unknown");
   const [gender, setGender] = useState<"male" | "female">("male");
+
+  // 🆕 City Search State
+  const [cityQuery, setCityQuery] = useState("");
+  const [cityResults, setCityResults] = useState<City[]>([]);
+  const [selectedCity, setSelectedCity] = useState<City | null>(null);
+  const [isCityLoading, setIsCityLoading] = useState(false);
+
   const [surnamePreference, setSurnamePreference] = useState<
     "any" | "common" | "specified"
   >("any");
@@ -182,8 +191,40 @@ export default function Home() {
   const [aiData, setAiData] = useState<ApiResponse | null>(null);
   const [isNamesLoading, setIsNamesLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [preferredVoice, setPreferredVoice] =
-    useState<SpeechSynthesisVoice | null>(null);
+
+  // 🆕 城市搜索逻辑 (Debounce or simple trigger)
+  const handleCitySearch = async (query: string) => {
+    setCityQuery(query);
+    if (query.length < 3) {
+      setCityResults([]);
+      return;
+    }
+
+    setIsCityLoading(true);
+    try {
+      // 调用 Open-Meteo 免费 API
+      const res = await fetch(
+        `https://geocoding-api.open-meteo.com/v1/search?name=${query}&count=5&language=en&format=json`
+      );
+      const data = await res.json();
+      if (data.results) {
+        setCityResults(data.results);
+      } else {
+        setCityResults([]);
+      }
+    } catch (e) {
+      console.error("City search failed", e);
+    } finally {
+      setIsCityLoading(false);
+    }
+  };
+
+  // 选择城市
+  const selectCity = (city: City) => {
+    setSelectedCity(city);
+    setCityQuery(`${city.name}, ${city.country}`); // 显示选中结果
+    setCityResults([]); // 关闭下拉
+  };
 
   const filteredSurnames = useMemo(() => {
     if (!surnameQuery.trim()) return [];
@@ -235,6 +276,8 @@ export default function Home() {
     setAiData(null);
     setIsNamesLoading(true);
 
+    // 1. Local Calc
+    // ⚠️ TODO: 下一步我们会把 selectedCity.longitude 传进去做真太阳时校准
     const result = calculateBazi(birthDate, birthTime);
     setBaziResult(result);
     setPhase("results");
@@ -253,6 +296,7 @@ export default function Home() {
           avoidElements: result.avoidElements,
           surnamePreference: apiSurnamePreference,
           specifiedSurname: apiSpecifiedSurname,
+          recommendedNameLength: result.recommendedNameLength,
         }),
       });
       if (!response.ok) throw new Error("Failed");
@@ -265,120 +309,44 @@ export default function Home() {
     }
   };
 
-  const limitPoemSentences = (
-    text: string,
-    preferredCount = 2,
-    maxCount = 3
-  ) => {
-    if (!text) return "";
-    const sentences: string[] = [];
-    let buffer = "";
-    const sentenceEnd = /[。！？!?]/;
+  // 🧠 智能高亮函数：不再依赖 AI 的花括号，前端自动匹配
+  const renderPoem = (poem: string, nameHanzi: string) => {
+    if (!poem) return null;
 
-    for (const char of text) {
-      buffer += char;
-      if (sentenceEnd.test(char)) {
-        if (buffer.trim()) sentences.push(buffer.trim());
-        buffer = "";
+    // 1. 先清洗掉 AI 可能传回来的花括号，还原纯文本
+    const cleanPoem = poem.replace(/[{}]/g, "");
+
+    // 2. 把名字拆成字符集 (比如 "邓春芳" -> Set{"邓", "春", "芳"})
+    // 注意：通常我们只高亮“名”，不因该高亮“姓”（如果姓在诗里出现，通常是巧合）
+    // 但为了简单且不出错，我们先匹配所有字。如果你想排除姓，可以只传 Given Name。
+    // 这里我们做一个优化：只匹配名字的后两个字（Given Name），避免把无关的字标红
+    // 假设 3字名：Surname(1) + Given(2)。 2字名：Surname(1) + Given(1)。
+    // 我们取 nameHanzi 的最后 (length - 1) 个字作为“名”的特征。
+
+    const givenName = nameHanzi.length > 1 ? nameHanzi.slice(1) : nameHanzi;
+    const targetChars = new Set(givenName.split(""));
+
+    // 3. 逐字渲染
+    return cleanPoem.split("").map((char, i) => {
+      // 标点符号不处理
+      if (["，", "。", "！", "？", "、", " "].includes(char)) {
+        return <span key={i}>{char}</span>;
       }
-    }
-    if (buffer.trim()) sentences.push(buffer.trim());
 
-    if (!sentences.length) return text;
-
-    const hasPreferred = sentences.length >= preferredCount;
-    const sliceCount = hasPreferred
-      ? Math.min(preferredCount, maxCount)
-      : Math.min(sentences.length, maxCount);
-
-    return sentences.slice(0, sliceCount).join(" ");
-  };
-
-  const renderPoem = (text: string, allowedHighlights?: Set<string>) => {
-    const limitedText = limitPoemSentences(text);
-    if (!limitedText) return null;
-
-    return limitedText.split(/({.*?})/).map((part, i) => {
-      const isBracketed = part.startsWith("{") && part.endsWith("}");
-      if (!isBracketed) return <span key={i}>{part}</span>;
-
-      const inner = part.slice(1, -1);
-      const cleaned = inner.trim();
-      const canHighlight =
-        allowedHighlights &&
-        cleaned.length > 0 &&
-        [...cleaned].every((char) => allowedHighlights.has(char));
-
-      if (canHighlight) {
+      if (targetChars.has(char)) {
         return (
-          <span key={i} className="text-red-800 font-bold mx-0.5">
-            {cleaned}
+          <span key={i} className="text-red-700 font-bold mx-0.5 text-lg">
+            {char}
           </span>
         );
       }
-
-      return <span key={i}>{cleaned}</span>;
+      return (
+        <span key={i} className="text-stone-800">
+          {char}
+        </span>
+      );
     });
   };
-
-  useEffect(() => {
-    if (typeof window === "undefined" || !window.speechSynthesis) return;
-    const synth = window.speechSynthesis;
-
-    const selectVoice = () => {
-      const voices = synth.getVoices();
-      if (!voices.length) return;
-
-      const softPattern = /(female|woman|xiao|mei|qing|yun|soft|sweet)/i;
-      const zhVoices = voices.filter((voice) =>
-        voice.lang.toLowerCase().startsWith("zh")
-      );
-      const zhSoft =
-        zhVoices.find((voice) => softPattern.test(voice.name)) || zhVoices[0];
-      const fallback =
-        voices.find((voice) => softPattern.test(voice.name)) || voices[0];
-
-      setPreferredVoice(zhSoft || fallback || null);
-    };
-
-    selectVoice();
-    if (synth.addEventListener) {
-      synth.addEventListener("voiceschanged", selectVoice);
-    } else {
-      synth.onvoiceschanged = selectVoice;
-    }
-
-    return () => {
-      if (synth.removeEventListener) {
-        synth.removeEventListener("voiceschanged", selectVoice);
-      } else if (synth.onvoiceschanged === selectVoice) {
-        synth.onvoiceschanged = null;
-      }
-    };
-  }, []);
-
-  const speakName = useCallback(
-    (hanzi: string, fallbackPinyin: string) => {
-      if (typeof window === "undefined" || !window.speechSynthesis) {
-        alert("Current browser does not support voice playback.");
-        return;
-      }
-      const utterance = new SpeechSynthesisUtterance(hanzi || fallbackPinyin);
-      if (preferredVoice) {
-        utterance.voice = preferredVoice;
-        utterance.lang = preferredVoice.lang;
-      } else {
-        utterance.lang = "zh-CN";
-      }
-      utterance.pitch = 1.05;
-      utterance.rate = 0.94;
-      utterance.volume = 1;
-
-      window.speechSynthesis.cancel();
-      window.speechSynthesis.speak(utterance);
-    },
-    [preferredVoice]
-  );
 
   if (phase === "results" && baziResult) {
     // @ts-ignore
@@ -391,7 +359,9 @@ export default function Home() {
     const metaTime = SHICHEN_MAPPING.find((t) => t.value === birthTime)
       ?.label.split("(")[0]
       .trim();
-    const metaString = `Born: ${birthDate} · Hour: ${metaTime} · ${
+    // 🆕 结果页显示出生地
+    const metaLocation = selectedCity ? `· ${selectedCity.name}` : "";
+    const metaString = `Born: ${birthDate} · Hour: ${metaTime} ${metaLocation} · ${
       gender === "male" ? "Male" : "Female"
     } ${metaSurname}`;
 
@@ -401,13 +371,12 @@ export default function Home() {
           <h1 className="text-4xl md:text-5xl font-bold font-serif tracking-tight text-stone-900 mb-3">
             You are the {baziResult.dayMaster} Archetype
           </h1>
-          <div className="text-sm md:text-base text-stone-500 font-serif leading-relaxed space-y-1">
-            <p>
-              Decoded from ancient wisdom, powered by AI — customized with your
-              birth profile.
-            </p>
-            <p>{metaString}</p>
+          <div className="text-xs md:text-sm text-stone-500 font-mono uppercase tracking-wide mb-1">
+            {metaString}
           </div>
+          <p className="text-xs text-stone-400 italic">
+            Decoded from ancient wisdom, powered by AI.
+          </p>
         </header>
 
         <main className="w-full max-w-4xl space-y-16">
@@ -425,7 +394,7 @@ export default function Home() {
               </p>
             </div>
 
-            <div className="p-8 md:p-10 grid md:grid-cols-5 gap-10 items-start border-b border-stone-100">
+            <div className="p-8 md:p-10 grid md:grid-cols-5 gap-10 items-start">
               <div className="md:col-span-2 flex flex-col items-center justify-center">
                 <FiveElementsChart
                   wuxing={baziResult.wuxing}
@@ -472,7 +441,6 @@ export default function Home() {
                 </div>
               </div>
             </div>
-            {/* Removed "How to Stay Balanced" section completely */}
           </section>
 
           {/* NAME SUGGESTIONS */}
@@ -501,109 +469,84 @@ export default function Home() {
             <div className="grid gap-8">
               {aiData &&
                 aiData.names &&
-                aiData.names.map((name, index) => {
-                  const cleanedName = (name.hanzi || "").replace(/[{}\s]/g, "");
-                  const highlightChars = new Set(
-                    cleanedName.split("").filter(Boolean)
-                  );
+                aiData.names.map((name, index) => (
+                  <div
+                    key={index}
+                    className="bg-white rounded-2xl p-8 md:p-10 shadow-sm border border-stone-200 hover:shadow-xl transition-all duration-500 relative overflow-hidden group"
+                  >
+                    <div className="absolute -right-12 -top-12 text-[12rem] font-serif text-stone-50 opacity-50 select-none pointer-events-none group-hover:text-stone-100 transition-colors">
+                      {name.hanzi.replace(/[{}]/g, "").charAt(0)}
+                    </div>
 
-                  return (
-                    <div
-                      key={index}
-                      className="bg-white rounded-2xl p-8 md:p-10 shadow-sm border border-stone-200 hover:shadow-xl transition-all duration-500 relative overflow-hidden group"
-                    >
-                      <div className="absolute -right-12 -top-12 text-[12rem] font-serif text-stone-50 opacity-50 select-none pointer-events-none group-hover:text-stone-100 transition-colors">
-                        {cleanedName.charAt(0)}
+                    <div className="relative z-10">
+                      <div className="mb-8 text-left">
+                        <h3 className="text-6xl md:text-7xl font-serif text-stone-900 tracking-tight mb-3 leading-none">
+                          {name.hanzi.replace(/[{}]/g, "")}
+                        </h3>
+                        <div className="flex items-center gap-3 text-stone-500">
+                          <span className="text-xl font-medium tracking-wide font-serif">
+                            {name.pinyin}
+                          </span>
+                          <Volume2 className="w-5 h-5 cursor-pointer hover:text-stone-800" />
+                        </div>
+                        <div className="mt-6">
+                          <p className="text-lg md:text-xl text-stone-800 font-serif italic leading-relaxed">
+                            “{name.poeticMeaning}”
+                          </p>
+                        </div>
                       </div>
 
-                      <div className="relative z-10">
-                        <div className="mb-8 text-left">
-                          {/* 🟢 名字标题：自动清洗花括号 */}
-                          <div className="relative inline-block mb-4 pr-10">
-                            <h3 className="text-[2.75rem] md:text-[3.5rem] font-serif text-stone-900 tracking-tight leading-none">
-                              {cleanedName}
-                            </h3>
-                            <button
-                              type="button"
-                              onClick={() =>
-                                speakName(cleanedName, name.pinyin)
-                              }
-                              className="absolute bottom-0 right-0 rounded-full border border-stone-200 p-2 text-stone-600 hover:text-stone-900 hover:border-stone-400 transition bg-white shadow-sm"
-                              aria-label={`Play pronunciation for ${cleanedName}`}
-                            >
-                              <Volume2 className="w-4 h-4" />
-                            </button>
-                          </div>
-                          <div className="flex items-center gap-3 text-stone-500">
-                            <span className="text-xl font-medium tracking-wide font-serif">
-                              {name.pinyin}
-                            </span>
-                          </div>
-                          <div className="mt-6">
-                            <p className="text-lg md:text-xl text-stone-800 font-serif italic leading-relaxed">
-                              “{name.poeticMeaning}”
+                      <div className="grid md:grid-cols-2 gap-10 pt-8 border-t border-stone-100">
+                        <div>
+                          <h4 className="text-xs font-bold text-stone-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+                            📖 Cultural Heritage
+                          </h4>
+                          <div className="bg-[#FFFCF5] p-5 rounded-xl border border-stone-100">
+                            <p className="text-stone-800 font-serif text-lg mb-2 leading-relaxed">
+                              {renderPoem(
+                                name.culturalHeritage?.original || "",
+                                name.hanzi
+                              )}
                             </p>
+                            <p className="text-sm text-stone-500 italic mb-3 border-l-2 border-stone-300 pl-3">
+                              "{name.culturalHeritage?.translation}"
+                            </p>
+                            <div className="text-[10px] text-stone-400 font-bold uppercase tracking-wide">
+                              Source: {name.culturalHeritage?.source}
+                            </div>
                           </div>
                         </div>
 
-                        <div className="grid md:grid-cols-2 gap-10 pt-8 border-t border-stone-100">
-                          <div>
-                            <h4 className="text-xs font-bold text-stone-400 uppercase tracking-wider mb-3 flex items-center gap-2">
-                              📖 Cultural Heritage
-                            </h4>
-                            <div className="bg-[#FFFCF5] p-5 rounded-xl border border-stone-100">
-                              <p className="text-stone-800 font-serif text-lg mb-2 leading-relaxed">
-                                {renderPoem(
-                                  name.culturalHeritage?.original || "",
-                                  highlightChars
-                                )}
-                              </p>
-                              <p className="text-sm text-stone-500 italic mb-3 border-l-2 border-stone-300 pl-3">
-                                "{name.culturalHeritage?.translation}"
-                              </p>
-                              <div className="text-[10px] text-stone-400 font-bold uppercase tracking-wide">
-                                Source: {name.culturalHeritage?.source}
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Anatomy (精致化) */}
-                          <div>
-                            <h4 className="text-xs font-bold text-stone-400 uppercase tracking-wider mb-3">
-                              🔍 The Anatomy
-                            </h4>
-                            <div className="space-y-4">
-                              {name.anatomy &&
-                                name.anatomy.map((char, idx) => (
-                                  <div
-                                    key={idx}
-                                    className="flex items-center gap-4"
-                                  >
-                                    {/* w-9 h-9 */}
-                                    <div className="w-9 h-9 bg-stone-900 text-white rounded-lg flex items-center justify-center font-serif text-lg flex-shrink-0">
-                                      {char.char}
-                                    </div>
-                                    <div className="flex-1 flex items-center text-sm text-stone-800">
-                                      <span className="text-stone-600">
-                                        {char.meaning}
-                                      </span>
-                                    </div>
-                                    <div
-                                      className={`text-[10px] font-bold px-3 py-1 rounded-full border flex-shrink-0 transition-colors ${getElementBadgeClasses(
-                                        char.element
-                                      )}`}
-                                    >
-                                      {char.element}
-                                    </div>
+                        <div>
+                          <h4 className="text-xs font-bold text-stone-400 uppercase tracking-wider mb-3">
+                            🔍 The Anatomy
+                          </h4>
+                          <div className="space-y-4">
+                            {name.anatomy &&
+                              name.anatomy.map((char, idx) => (
+                                <div
+                                  key={idx}
+                                  className="flex items-center gap-4"
+                                >
+                                  <div className="w-9 h-9 bg-stone-900 text-white rounded-lg flex items-center justify-center font-serif text-lg flex-shrink-0">
+                                    {char.char}
                                   </div>
-                                ))}
-                            </div>
+                                  <div className="flex-1 flex items-center text-sm text-stone-800">
+                                    <span className="text-stone-700">
+                                      {char.meaning}
+                                    </span>
+                                  </div>
+                                  <div className="text-[10px] font-bold px-2.5 py-1 bg-stone-100 text-stone-500 rounded-full border border-stone-200 flex-shrink-0">
+                                    {char.element}
+                                  </div>
+                                </div>
+                              ))}
                           </div>
                         </div>
                       </div>
                     </div>
-                  );
-                })}
+                  </div>
+                ))}
             </div>
           </section>
 
@@ -625,10 +568,9 @@ export default function Home() {
     );
   }
 
-  // ... (Form Phase 代码保持不变)
+  // --- FORM VIEW ---
   return (
     <div className="min-h-screen bg-stone-50 flex flex-col items-center py-12 px-4 sm:px-6 font-sans">
-      {/* 此处省略了表单部分的重复代码，请保留你原来的表单代码 */}
       <div className="text-center max-w-2xl mx-auto mb-10">
         <h1 className="text-4xl font-bold text-stone-900 sm:text-5xl font-serif mb-4">
           HarmonyName
@@ -639,6 +581,7 @@ export default function Home() {
       </div>
 
       <div className="w-full max-w-md bg-white p-8 rounded-3xl shadow-xl border border-stone-100">
+        {/* Date */}
         <div className="mb-6">
           <label className="block text-xs font-bold text-stone-900 uppercase tracking-wide mb-2">
             Date of Birth
@@ -650,6 +593,52 @@ export default function Home() {
             onChange={(e) => setBirthDate(e.target.value)}
           />
         </div>
+
+        {/* 🆕 City Search (Inserted Here) */}
+        <div className="mb-6 relative">
+          <label className="block text-xs font-bold text-stone-900 uppercase tracking-wide mb-2">
+            Birth City
+          </label>
+          <div className="relative">
+            <input
+              type="text"
+              placeholder="Search city (e.g. London, New York)"
+              value={cityQuery}
+              onChange={(e) => handleCitySearch(e.target.value)}
+              className="w-full pl-10 pr-4 py-3 bg-white border border-stone-200 rounded-xl text-stone-900 focus:ring-2 focus:ring-stone-900 focus:border-transparent outline-none transition-all"
+            />
+            <MapPin className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
+            {isCityLoading && (
+              <Loader2 className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-stone-400" />
+            )}
+          </div>
+
+          {/* City Dropdown */}
+          {cityResults.length > 0 && (
+            <div className="absolute z-20 w-full mt-2 bg-white border border-stone-200 rounded-xl shadow-lg max-h-60 overflow-y-auto">
+              {cityResults.map((city) => (
+                <button
+                  key={city.id}
+                  onClick={() => selectCity(city)}
+                  className="w-full text-left px-4 py-3 hover:bg-stone-50 border-b border-stone-100 last:border-0 transition-colors"
+                >
+                  <div className="font-bold text-stone-800 text-sm">
+                    {city.name}
+                  </div>
+                  <div className="text-xs text-stone-500">
+                    {city.admin1 ? `${city.admin1}, ` : ""}
+                    {city.country}
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+          <p className="mt-2 text-[10px] text-stone-400">
+            Used for accurate solar time calculation.
+          </p>
+        </div>
+
+        {/* Time */}
         <div className="mb-6">
           <label className="block text-xs font-bold text-stone-900 uppercase tracking-wide mb-2">
             Time of Birth
@@ -671,6 +660,8 @@ export default function Home() {
             </div>
           </div>
         </div>
+
+        {/* Gender */}
         <div className="mb-8">
           <label className="block text-xs font-bold text-stone-900 uppercase tracking-wide mb-2">
             Gender
@@ -692,6 +683,8 @@ export default function Home() {
             ))}
           </div>
         </div>
+
+        {/* Surname Preference */}
         <div className="mb-10">
           <label className="block text-xs font-bold text-stone-900 uppercase tracking-wide mb-2">
             Surname Preference
@@ -818,6 +811,7 @@ export default function Home() {
             </div>
           </div>
         </div>
+
         <button
           onClick={handleCalculate}
           className="w-full bg-stone-900 text-white py-4 rounded-xl font-bold text-lg hover:bg-stone-800 hover:scale-[1.02] active:scale-[0.98] transition-all shadow-xl flex items-center justify-center gap-2"
