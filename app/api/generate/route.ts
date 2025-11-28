@@ -5,8 +5,12 @@ import { searchPoems } from "@/src/lib/retriever";
 export const maxDuration = 60;
 export const dynamic = "force-dynamic";
 
+// 👇 修改这里：初始化逻辑
 const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
+  // 1. 换钥匙
+  apiKey: process.env.DEEPSEEK_API_KEY,
+  // 2. 换地址 (这就是"兼容模式"的精髓)
+  baseURL: process.env.DEEPSEEK_BASE_URL,
 });
 
 const createSystemPrompt = (contextPoems: string) => `
@@ -28,26 +32,36 @@ ${contextPoems}
    - **RIGHT**: "明月松间照，{清}泉石上流... (Heart/Mind implied or explicitly present)".
    - **Better Strategy**: Find the poem FIRST, then pick the name characters FROM the poem.
 
-3. **JSON SCHEMA**:
-   {
-     "names": [
-       {
-         "hanzi": "Surname + Name",
-         "pinyin": "...",
-         "poeticMeaning": "...",
-         "culturalHeritage": {
-           "source": "Tang Poem 《...》 by ...",
-           "original": "Full poetic sentence here with {highlight}...", 
-           "translation": "..."
-         },
-         "anatomy": [
-           { "char": "...", "meaning": "...", "type": "Surname", "element": "..." },
-           { "char": "...", "meaning": "...", "type": "Given Name", "element": "..." }
-         ],
-         "masterComment": "Analysis..."
-       }
-     ]
-   }
+3. **Modern Aesthetics (No "Weird" Ancient Names)**:
+   - Avoid obscure/archaic characters from Shijing/Chu Ci unless they are common in modern use (e.g. 呦呦 is good, 乔迁 is bad).
+   - Prefer elegant characters from Tang/Song poetry (e.g., "Yun", "Ting", "Ze", "Mu").
+
+4. **Cultural Source (Concise & Beautiful)**:
+   - **RULE**: Quote ONLY the specific couplet (2 lines max) that contains the name characters.
+   - **DO NOT** quote the entire poem. Keep it short and impactful.
+   - **HIGHLIGHTING**: Wrap the name characters in curly braces {}.
+
+
+--- JSON OUTPUT FORMAT ---
+{
+  "names": [
+    {
+      "hanzi": "Surname + Name",
+      "pinyin": "...",
+      "poeticMeaning": "...",
+      "culturalHeritage": {
+        "source": "Tang Poem 《...》 by ...",
+        "original": "Line 1..., Line 2...",  <-- Keep this short (max 2 lines)
+        "translation": "..."
+      },
+      "anatomy": [
+        { "char": "...", "meaning": "...", "type": "Surname", "element": "..." },
+        { "char": "...", "meaning": "...", "type": "Given Name", "element": "..." }
+      ],
+      "masterComment": "..."
+    }
+  ]
+}
 `;
 
 export async function POST(request: Request) {
@@ -115,13 +129,13 @@ export async function POST(request: Request) {
 
     // 3. 调用 AI
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+      model: "deepseek-chat", // 👈 DeepSeek V3 的模型代号
       messages: [
         { role: "system", content: createSystemPrompt(poemsContextText) },
         { role: "user", content: userMessage },
       ],
       response_format: { type: "json_object" },
-      temperature: 0.6, // 再次降温，让它更守规矩
+      temperature: 0.75, // 再次降温，让它更守规矩
     });
 
     const content = completion.choices[0].message.content;
