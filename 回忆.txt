@@ -1,0 +1,91 @@
+这个项目是Next.js（App Router）做的，所以前端 + 后端（API）放在同一个仓库里：页面是前端，app/api/** 是后端接口（跑在同一个 Next 服务器/Serverless Function 里）。
+
+一句话总览：它在做什么
+	•	前端：app/page.tsx 采集用户输入, 请求 /api/generate
+    •	后端 API：app/api/generate/route.ts
+	1.	调 searchPoems() 做 RAG（从本地诗词库检索）
+	2.	把检索到的诗词上下文 + 规则 prompt 发给 DeepSeek（OpenAI SDK 兼容）
+	3.	返回结构化 JSON 给前端渲染 “Master’s Selection”
+
+1) app/（核心：页面 + API）
+这是 Next.js App Router 的“约定目录”。
+	•	app/page.tsx：首页 UI（输入表单、按钮、展示结果/错误提示）
+	•	app/layout.tsx：全站布局（字体、全局容器、meta 等）
+	•	app/globals.css：全局样式
+	•	app/api/generate/route.ts：后端接口（你现在出问题的地方）
+	•	因为 Next.js 允许在同一项目里写 API Route，所以这就是“后端”。
+
+为什么这样设计：同仓库、同类型系统、同部署，前端调用后端不用跨项目，迭代快。
+
+2) src/（你自己写的“业务库”）
+
+你这里用它来放可复用逻辑。
+	•	src/lib/retriever.ts：RAG 检索器
+	•	读取/搜索诗词库（比如 poems-db.json），返回最相关的几首给 API 用
+
+⸻
+
+3) data/（原始素材库）
+
+你这里像“原始数据仓库”。
+	•	data/tang.json / song.json / shijing.json：诗词原始数据
+	•	这些一般不直接在线检索用，而是给脚本预处理生成最终数据库
+
+4) scripts/（离线构建脚本）
+这类脚本通常只在你本地跑，用来把原始数据变成“可检索”的格式。
+	•	scripts/build-library.ts：把 data/*.json 整理成统一格式
+    	scripts/generate-embeddings.ts：生成 embeddings（如果你当时做了向量检索）
+        	•	scripts/poems.json：脚本中间产物/合并后的数据（看命名像聚合库）
+
+为什么需要 scripts：线上接口不能每次都临时处理几万条诗词；离线先做成“快查库”，线上只负责检索 + 生成。
+
+5) src/lib/poems-db.json
+
+这是非常关键的“线上检索库”：
+	•	它像最终编译后的诗词数据库（可能已经做过去噪、字段统一、甚至带 embedding）
+	•	retriever.ts 很可能就是搜它
+
+5) src/lib/poems-db.json
+
+这是非常关键的“线上检索库”：
+	•	它像最终编译后的诗词数据库（可能已经做过去噪、字段统一、甚至带 embedding）
+	•	retriever.ts 很可能就是搜它
+
+6) lib/（注意：这个 lib 是根目录的，不是 src/lib）
+
+你这儿看起来放的是“业务规则/常量”。
+	•	lib/bazi.ts：八字/五行计算逻辑（或映射规则）
+	•	lib/surnames.ts：姓氏库或姓氏选择逻辑
+
+7) .env.local
+
+本地环境变量：
+	•	DEEPSEEK_API_KEY
+	•	DEEPSEEK_BASE_URL
+	•	以及你可能还有 embeddings 用的 key（要看文件内容）
+
+部署线上时，这些必须在 Vercel/服务器环境变量里也配置一份，否则线上会报你现在这种“oracle silent”。
+
+8) public/
+静态资源：svg、icon、图片等。
+
+9) package.json / next.config.ts / tsconfig.json
+	•	package.json：依赖、脚本（dev/build/start）
+	•	next.config.ts：Next 配置
+	•	tsconfig.json：TS 配置、路径别名（你有 @/src/...）
+
+10) .next/、node_modules/
+	•	.next：Next 构建产物（不重要，通常不需要手动改）
+	•	node_modules：依赖（不需要解释，别提交）
+
+你问的核心：为什么“前后端一起”？
+
+因为你用的是 Next.js，它天然支持：
+	•	同仓库写页面（前端）
+	•	同仓库写 API Route（后端）
+	•	一起部署（Vercel 最常见；或自建 Node 服务器）
+
+好处：
+	•	不用单独搞一个 Express/FastAPI 服务
+	•	接口和页面共享类型/代码更方便
+	•	部署简单：一个项目搞定

@@ -299,11 +299,45 @@ export default function Home() {
           recommendedNameLength: result.recommendedNameLength,
         }),
       });
-      if (!response.ok) throw new Error("Failed");
+
+      if (!response.ok) {
+        // Try to parse error response
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch {
+          errorData = { error: `HTTP ${response.status}` };
+        }
+
+        // Log error details for debugging
+        console.error("API Error:", {
+          status: response.status,
+          code: errorData.code,
+          details: errorData.details,
+        });
+
+        // Show user-friendly error message
+        const userMessage =
+          errorData.code === "ENV_MISSING"
+            ? "Server configuration error. Please contact support."
+            : errorData.code === "API_ERROR" ||
+              errorData.code === "EMPTY_RESPONSE"
+            ? "The AI service is temporarily unavailable. Please try again."
+            : errorData.details ||
+              "The ancient oracle is momentarily silent. Please try again.";
+
+        setError(userMessage);
+        return;
+      }
+
       const data = await response.json();
       setAiData(data);
-    } catch (e) {
-      setError("The ancient oracle is momentarily silent. Please try again.");
+    } catch (e: any) {
+      console.error("Request failed:", e);
+      setError(
+        e.message ||
+          "The ancient oracle is momentarily silent. Please try again."
+      );
     } finally {
       setIsNamesLoading(false);
     }
