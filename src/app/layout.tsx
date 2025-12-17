@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+// 1. 引入 Google 衬线字体
+import { Lora } from "next/font/google";
 import "./globals.css";
 
 export const metadata: Metadata = {

@@ -14,17 +14,17 @@ const openai = new OpenAI({
 const SOURCES = [
   {
     name: "Tang Poems",
-    path: "data/tang.json", // 👈 指向你刚才创建的文件
+    path: "src/data/tang.json", // 👈 指向 src/data 下的文件
     type: "Tang"
   },
   {
     name: "Song Ci",
-    path: "data/song.json",
+    path: "src/data/song.json",
     type: "Song"
   },
   {
     name: "Shijing",
-    path: "data/shijing.json",
+    path: "src/data/shijing.json",
     type: "Classic"
   }
 ];

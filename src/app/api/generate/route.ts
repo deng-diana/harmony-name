@@ -3,7 +3,7 @@ import OpenAI from "openai";
 // 🎯 关键路径修正：
 // 因为 retriever.ts 在 src/lib 下，而 @ 代表 src
 // 所以这里必须是 @/lib/retriever
-import { searchPoems } from "@/src/lib/retriever";
+import { searchPoems } from "@/lib/retriever";
 
 // 设置最大运行时间
 export const maxDuration = 60;
