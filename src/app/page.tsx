@@ -159,7 +159,7 @@ export default function LandingPage() {
             ].map((item, i) => (
               <div
                 key={i}
-                className="bg-white p-8 rounded-2xl shadow-sm hover:shadow-md hover:-translate-y-1 transition-all duration-300 text-center scroll-animate"
+                className="bg-white p-8 rounded-2xl card-shadow-soft hover:card-shadow-soft-hover hover:-translate-y-1 transition-all duration-300 text-center scroll-animate"
               >
                 <div className="text-5xl mb-6">{item.icon}</div>
                 <h3 className="text-xl font-bold text-stone-900 mb-3 font-serif">
