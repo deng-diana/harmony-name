@@ -1,0 +1,73 @@
+把 HarmonyName 变成 MCP (Model Context Protocol) Server，意味着你的产品将不再局限于一个网站，而是变成一个**“超级插件”**，可以被 Claude Desktop、Cursor、甚至未来的 ChatGPT 直接调用。
+结论：非常可行，而且你已经完成了 90% 的工作。
+因为 MCP 的核心就是**“工具 (Tools)”** 和 “资源 (Resources)”，而你已经把核心逻辑（八字算法、RAG 检索）都封装在 lib 里了。我们只需要给这些逻辑穿上一层“MCP 的外衣”。
+
+🗺️ 什么是 MCP？(给 12 岁 CEO 的解释)
+现在的 HarmonyName 网站： 就像一家实体餐厅。客人必须亲自走进店里（打开网址），看着菜单点菜，然后坐在店里吃。
+HarmonyName MCP Server： 就像把你的餐厅变成了**“美团外卖”**。
+客人不需要进店，他们可以在家里（Claude/Cursor 聊天框）直接喊：“我要一个缺火的名字”。
+MCP 就是那个外卖小哥，把你厨房里的菜（八字算法结果）打包送给 AI，AI 再喂给用户。
+
+📅 你的执行计划 (Roadmap)
+我们要把现有的逻辑拆解成 MCP 的三个核心概念：
+
+
+这是一个非常有前瞻性的想法！🚀
+把 HarmonyName 变成 MCP (Model Context Protocol) Server，意味着你的产品将不再局限于一个网站，而是变成一个**“超级插件”**，可以被 Claude Desktop、Cursor、甚至未来的 ChatGPT 直接调用。
+结论：非常可行，而且你已经完成了 90% 的工作。
+因为 MCP 的核心就是**“工具 (Tools)”** 和 “资源 (Resources)”，而你已经把核心逻辑（八字算法、RAG 检索）都封装在 lib 里了。我们只需要给这些逻辑穿上一层“MCP 的外衣”。
+🗺️ 什么是 MCP？(给 12 岁 CEO 的解释)
+现在的 HarmonyName 网站： 就像一家实体餐厅。客人必须亲自走进店里（打开网址），看着菜单点菜，然后坐在店里吃。
+HarmonyName MCP Server： 就像把你的餐厅变成了**“美团外卖”**。
+客人不需要进店，他们可以在家里（Claude/Cursor 聊天框）直接喊：“我要一个缺火的名字”。
+MCP 就是那个外卖小哥，把你厨房里的菜（八字算法结果）打包送给 AI，AI 再喂给用户。
+📅 你的执行计划 (Roadmap)
+我们要把现有的逻辑拆解成 MCP 的三个核心概念：
+1. 定义工具 (Tools)
+这是 AI 可以“调用”的函数。
+Tool A: calculate_bazi
+输入： 生日、时间、出身地点。
+输出： 五行强弱、喜用神（JSON 数据）。
+逻辑：直接复用你的 src/lib/bazi.ts。
+
+Tool B: get_lucky_names
+输入： 喜用神、性别、姓氏。
+输出： 3 个名字 + 诗词出处。
+逻辑：复用你的 RAG 检索 + OpenAI 生成逻辑。
+
+2. 定义资源 (Resources) - 可选
+你可以把 poems-db.json 作为一个只读资源暴露出来，让 AI 可以随时查阅“唐诗三百首”。
+
+🛠️ 实战：第一步 (环境准备)
+我们不需要新建项目，就在当前的 harmony-name 项目里加一个“侧门”。
+1. 安装 MCP SDK
+在终端执行：
+npm install @modelcontextprotocol/sdk zod
+zod 是用来定义参数格式的，MCP 强依赖它)
+
+ GPT Actions 是 OpenAI 这边最新的机制，
+ 跟你看到的 “MCP/Claude” 协议不一样，但用途上有重叠。具体解释如下：
+ 🔹 GPT Action 是什么？
+GPT Actions 是 OpenAI 在 ChatGPT 里支持的一种扩展机制，
+允许自定义 GPT（即 ChatGPT 里的 GPTs）直接调用外部 REST API 来获取数据或执行动作。
+为了让 ChatGPT 知道怎么调用这些 API，你需要给它一个 OpenAPI schema 描述你的 API。
+这样在聊天过程中它就能基于用户指令自动发起调用
+
+换句话说：
+	•	它不是一种新的模型，而是一种让 ChatGPT 连接你提供的服务的方式。
+	•	工作模式类似早期的插件，但更简化、更依赖 OpenAPI 规范。
+🔹 GPT Actions 是最新吗？
+是的，这是 OpenAI 当前官方文档里推荐的方式来让 自定义 GPT 访问你自己的 API：你写好 API，
+写一个 OpenAPI 描述文件，然后在 ChatGPT GPT 创建流程里上传它。
+之后用户在 GPT 与你 API 之间的交互就能自动触发。 
+
+
+🔹 和 MCP 比较
+	•	MCP（Model Context Protocol） 是 Anthropic/Claude 生态里的标准协议。
+	•	GPT Actions / OpenAPI 是 OpenAI ecosystem 里让 ChatGPT connect 外部 API 的官方方式。
+    	•	MCP 更偏向 AI 原生、协议级别、可组合的复杂功能；
+	•	OpenAI 的 GPT Actions 更偏向标准化 REST API 调用 + OpenAPI 文档的方式。
+
+所以 OpenAI 单独搞一套，是因为他们选择了 通用、成熟、基于 REST + OpenAPI 的工程方式，
+而不是完全采用 MCP 协议。
+    

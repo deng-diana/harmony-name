@@ -8,6 +8,7 @@ import {
   ARCHETYPES,
 } from "@/lib/bazi";
 import { COMMON_SURNAMES, type CommonSurname } from "@/lib/surnames";
+import { speakChineseName, stopSpeaking } from "@/lib/tts";
 import {
   Loader2,
   ArrowRight,
@@ -191,6 +192,51 @@ export default function Home() {
   const [aiData, setAiData] = useState<ApiResponse | null>(null);
   const [isNamesLoading, setIsNamesLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  // 🎤 语音播放状态
+  const [playingNameIndex, setPlayingNameIndex] = useState<number | null>(null);
+
+  // 🎤 确保语音列表加载完成（Web Speech API需要时间加载）
+  useEffect(() => {
+    // 某些浏览器需要触发一次getVoices()才能加载语音列表
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      const loadVoices = () => {
+        window.speechSynthesis.getVoices();
+      };
+      loadVoices();
+      // 某些浏览器在voiceschanged事件触发后才加载完成
+      window.speechSynthesis.onvoiceschanged = loadVoices;
+    }
+
+    // 组件卸载时停止所有播放
+    return () => {
+      stopSpeaking();
+    };
+  }, []);
+
+  // 🎤 处理名字语音播放
+  const handlePlayName = async (name: NameOption, index: number) => {
+    // 如果正在播放同一个名字，则停止
+    if (playingNameIndex === index) {
+      stopSpeaking();
+      setPlayingNameIndex(null);
+      return;
+    }
+
+    // 停止当前播放
+    stopSpeaking();
+    setPlayingNameIndex(index);
+
+    try {
+      const hanzi = name.hanzi.replace(/[{}]/g, "");
+      await speakChineseName(hanzi);
+    } catch (error) {
+      console.error("语音播放失败:", error);
+      // 如果Web API失败，可以在这里添加降级方案
+    } finally {
+      setPlayingNameIndex(null);
+    }
+  };
 
   // 🆕 城市搜索逻辑 (Debounce or simple trigger)
   const handleCitySearch = async (query: string) => {
@@ -521,7 +567,17 @@ export default function Home() {
                           <span className="text-xl font-medium tracking-wide font-serif">
                             {name.pinyin}
                           </span>
-                          <Volume2 className="w-5 h-5 cursor-pointer hover:text-stone-800" />
+                          <button
+                            onClick={() => handlePlayName(name, index)}
+                            className={`transition-all ${
+                              playingNameIndex === index
+                                ? "text-stone-900 animate-pulse"
+                                : "hover:text-stone-800 cursor-pointer"
+                            }`}
+                            aria-label="播放名字发音"
+                          >
+                            <Volume2 className="w-5 h-5" />
+                          </button>
                         </div>
                         <div className="mt-6">
                           <p className="text-lg md:text-xl text-stone-800 font-serif italic leading-relaxed">

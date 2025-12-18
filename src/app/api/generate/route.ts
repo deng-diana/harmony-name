@@ -1,33 +1,23 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
-// 🎯 关键路径修正：
-// 因为 retriever.ts 在 src/lib 下，而 @ 代表 src
-// 所以这里必须是 @/lib/retriever
+// 引入检索器
 import { searchPoems } from "@/lib/retriever";
 
-// 设置最大运行时间
+// 设置最大运行时间 (虽然 gpt-4o-mini 很快，但保留 60s 以防万一)
 export const maxDuration = 60;
 export const dynamic = "force-dynamic";
 
-// --- 1. DeepSeek 初始化配置 ---
-const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY;
-// 自动处理 Base URL 格式 (确保以 /v1 结尾)
-const RAW_BASE_URL = process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com";
-const normalizedBaseURL = RAW_BASE_URL.endsWith("/v1") 
-  ? RAW_BASE_URL 
-  : RAW_BASE_URL.endsWith("/") 
-    ? `${RAW_BASE_URL}v1` 
-    : `${RAW_BASE_URL}/v1`;
-
+// --- 1. 初始化 OpenAI (回归经典) ---
+// 只要你的 .env.local 里有 OPENAI_API_KEY，它会自动读取
+// 不需要再配置 baseURL 了，因为它默认就是去 OpenAI 官网
 const openai = new OpenAI({
-  apiKey: DEEPSEEK_API_KEY,
-  baseURL: normalizedBaseURL,
+  apiKey: process.env.OPENAI_API_KEY,
 });
 
-// --- 2. 系统提示词 (保持高标准) ---
+// --- 2. 系统提示词 (保持之前的高标准) ---
 const createSystemPrompt = (contextPoems: string) => `
-Role: You are a world-class Chinese Cultural Consultant.
-Mission: Create 3 culturally profound Chinese names based on BaZi.
+Role: You are a world-class Chinese Cultural Consultant and Naming Master. 
+Mission: Create 3 culturally profound Chinese names based on BaZi (Destiny Chart).
 
 --- CONTEXT (RETRIEVED POEMS) ---
 ${contextPoems}
@@ -39,8 +29,8 @@ ${contextPoems}
 
 2. **LITERAL MATCH CHECK (CRITICAL)**: 
    - The "original" text MUST contain the characters used in the name.
-   - **IF NAME IS "清心"**: The poem MUST contain "清" AND "心".
    - **Strategy**: Find the poem FIRST, then pick the name characters FROM the poem.
+   - Wrap the name characters in curly braces {} in the "original" field.
 
 3. **Modern Aesthetics**:
    - Avoid obscure/archaic characters.
@@ -48,7 +38,6 @@ ${contextPoems}
 
 4. **Cultural Source**:
    - Quote ONLY the specific couplet (2 lines max).
-   - **HIGHLIGHTING**: Wrap the name characters in curly braces {}.
 
 --- JSON OUTPUT FORMAT ---
 {
@@ -74,12 +63,12 @@ ${contextPoems}
 
 export async function POST(request: Request) {
   // --- 3. 启动检查 ---
-  console.log("🚀 API Route Started: /api/generate");
+  console.log("🚀 API Route Started: /api/generate (Model: gpt-4o-mini)");
   
-  if (!DEEPSEEK_API_KEY) {
-    console.error("❌ DEEPSEEK_API_KEY is missing");
+  if (!process.env.OPENAI_API_KEY) {
+    console.error("❌ OPENAI_API_KEY is missing");
     return NextResponse.json(
-      { error: "Server configuration error", details: "DeepSeek API Key missing" },
+      { error: "Server configuration error", details: "OpenAI API Key missing" },
       { status: 500 }
     );
   }
@@ -133,29 +122,29 @@ export async function POST(request: Request) {
          - Step A: Find a poem from Context or Memory that matches the Favourable Elements.
          - Step B: EXTRACT 1 or 2 characters DIRECTLY from that poem.
          - Step C: Combine with Surname.
-      3. **VERIFY**: Do the characters actually exist in the poem? If no, go back to Step A.
+      3. **VERIFY**: Do the characters actually exist in the poem?
     `;
 
-    // 6. 调用 DeepSeek
-    console.log("🤖 Calling DeepSeek API...");
+    // 6. 调用 OpenAI (gpt-4o-mini)
+    console.log("🤖 Calling OpenAI API...");
     const completion = await openai.chat.completions.create({
-      model: "deepseek-chat", 
+      model: "gpt-4o-mini", // 👈 切换回了速度之王
       messages: [
         { role: "system", content: createSystemPrompt(poemsContextText) },
         { role: "user", content: userMessage },
       ],
       response_format: { type: "json_object" },
-      temperature: 0.75,
+      temperature: 0.7, // 保持适度的创造力
     });
 
     const content = completion.choices[0]?.message?.content;
     
     if (!content) {
-      throw new Error("DeepSeek returned empty content");
+      throw new Error("OpenAI returned empty content");
     }
 
     // 7. 返回结果
-    console.log("✅ DeepSeek Response Received");
+    console.log("✅ OpenAI Response Received");
     return NextResponse.json(JSON.parse(content));
 
   } catch (error: any) {
