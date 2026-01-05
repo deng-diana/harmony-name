@@ -14,7 +14,7 @@ const openai = new OpenAI({
 // --- 2. 系统提示词 (保持高质量标准，与 /api/generate 一致) ---
 const createSystemPrompt = (contextPoems: string) => `
 Role: You are a world-class Chinese Cultural Consultant and Naming Master. 
-Mission: Create 3 culturally profound Chinese names based on BaZi (Destiny Chart).
+Mission: Create EXACTLY 3 culturally profound Chinese names based on BaZi (Destiny Chart).
 
 --- CONTEXT (RETRIEVED POEMS) ---
 ${contextPoems}
@@ -36,12 +36,46 @@ ${contextPoems}
 4. **Cultural Source**:
    - Quote ONLY the specific couplet (2 lines max).
 
+5. **QUANTITY REQUIREMENT (CRITICAL)**:
+   - You MUST generate EXACTLY 3 names in the "names" array.
+   - The "names" array MUST contain exactly 3 objects, no more, no less.
+
 --- JSON OUTPUT FORMAT ---
 {
   "analysis": "Brief summary of the user's BaZi (e.g. Weak Wood, needs Water).",
   "names": [
     {
-      "hanzi": "Surname + Name",
+      "hanzi": "Surname + Name 1",
+      "pinyin": "...",
+      "poeticMeaning": "...",
+      "culturalHeritage": {
+        "source": "Tang Poem 《...》 by ...",
+        "original": "Line 1..., Line 2...",
+        "translation": "..."
+      },
+      "anatomy": [
+        { "char": "...", "meaning": "...", "type": "Surname", "element": "..." },
+        { "char": "...", "meaning": "...", "type": "Given Name", "element": "..." }
+      ],
+      "masterComment": "..."
+    },
+    {
+      "hanzi": "Surname + Name 2",
+      "pinyin": "...",
+      "poeticMeaning": "...",
+      "culturalHeritage": {
+        "source": "Tang Poem 《...》 by ...",
+        "original": "Line 1..., Line 2...",
+        "translation": "..."
+      },
+      "anatomy": [
+        { "char": "...", "meaning": "...", "type": "Surname", "element": "..." },
+        { "char": "...", "meaning": "...", "type": "Given Name", "element": "..." }
+      ],
+      "masterComment": "..."
+    },
+    {
+      "hanzi": "Surname + Name 3",
       "pinyin": "...",
       "poeticMeaning": "...",
       "culturalHeritage": {
@@ -167,13 +201,15 @@ export async function POST(request: Request) {
       ${surnameInstruction}
       
       **NAMING TASK**:
+      You MUST generate EXACTLY 3 different names. Each name should be unique and meaningful.
+      
       1. Target Length: ${recommendedNameLength}
-      2. **Step-by-Step**:
+      2. **Step-by-Step** (repeat for EACH of the 3 names):
          - Step A: Find a poem from Context or Memory that matches the Favourable Elements.
          - Step B: EXTRACT 1 or 2 characters DIRECTLY from that poem.
          - Step C: Combine with Surname.
       3. **VERIFY**: Do the characters actually exist in the poem?
-      4. Generate 3 names using the RAG Context.
+      4. **IMPORTANT**: The "names" array in your JSON response MUST contain exactly 3 name objects.
     `;
 
     // --- 5. 调用 OpenAI (gpt-4o-mini) ---
@@ -197,6 +233,26 @@ export async function POST(request: Request) {
     // --- 6. 返回结果给 ChatGPT ---
     console.log("✅ OpenAI Response Received");
     const parsedContent = JSON.parse(content);
+
+    // 验证返回的名字数量
+    const namesArray = parsedContent.names || [];
+    const nameCount = Array.isArray(namesArray) ? namesArray.length : 0;
+
+    if (nameCount !== 3) {
+      console.warn(
+        `⚠️ Warning: Expected 3 names, but received ${nameCount}. Response:`,
+        JSON.stringify(parsedContent, null, 2)
+      );
+
+      // 如果只有 1-2 个名字，记录详细日志以便调试
+      if (nameCount < 3) {
+        console.error(
+          `❌ Insufficient names generated. Expected 3, got ${nameCount}. This may indicate a prompt issue.`
+        );
+      }
+    } else {
+      console.log(`✅ Successfully generated ${nameCount} names`);
+    }
 
     // 可选：在返回结果中包含八字信息，方便 ChatGPT 做进一步分析
     return NextResponse.json({
