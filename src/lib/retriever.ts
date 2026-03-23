@@ -1,11 +1,17 @@
-import OpenAI from "openai";
 import similarity from "compute-cosine-similarity";
-// @ts-ignore
-import poemsDb from "./poems-db.json"; 
+import { openai } from "./openai";
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+// poems-db.json is loaded at module init (~3.9MB with embeddings)
+// TODO: consider moving to a lightweight DB for production
+import poemsDb from "./poems-db.json";
+
+interface PoemRecord {
+  title: string;
+  author: string;
+  dynasty: string;
+  content: string;
+  embedding: number[];
+}
 
 export interface ScoredPoem {
   title: string;
@@ -15,19 +21,28 @@ export interface ScoredPoem {
   score: number;
 }
 
-export async function searchPoems(query: string, topK: number = 5): Promise<ScoredPoem[]> {
-  console.log(`🔍 RAG Searching: "${query}" in ${poemsDb.length} poems...`);
+// Simple in-memory cache for query embeddings
+// Key: query string, Value: embedding vector
+const embeddingCache = new Map<string, number[]>();
 
-  const response = await openai.embeddings.create({
-    model: "text-embedding-3-small",
-    input: query,
-    encoding_format: "float",
-  });
-  
-  const queryEmbedding = response.data[0].embedding;
+export async function searchPoems(
+  query: string,
+  topK: number = 5
+): Promise<ScoredPoem[]> {
+  let queryEmbedding = embeddingCache.get(query);
 
-  const scoredPoems = poemsDb.map((poem: any) => {
-    const score = similarity(queryEmbedding, poem.embedding);
+  if (!queryEmbedding) {
+    const response = await openai.embeddings.create({
+      model: "text-embedding-3-small",
+      input: query,
+      encoding_format: "float",
+    });
+    queryEmbedding = response.data[0].embedding;
+    embeddingCache.set(query, queryEmbedding);
+  }
+
+  const scoredPoems = (poemsDb as PoemRecord[]).map((poem) => {
+    const score = similarity(queryEmbedding!, poem.embedding);
     return {
       title: poem.title,
       author: poem.author,
@@ -37,12 +52,7 @@ export async function searchPoems(query: string, topK: number = 5): Promise<Scor
     };
   });
 
-  // 排序并取前 K 个 (我们取 5 个，给 AI 更多选择)
-  scoredPoems.sort((a: any, b: any) => b.score - a.score);
-  
-  const topPoems = scoredPoems.slice(0, topK);
-  
-  console.log(`📚 Found ${topPoems.length} matches. Top: 《${topPoems[0].title}》`);
-  
-  return topPoems;
+  scoredPoems.sort((a, b) => b.score - a.score);
+
+  return scoredPoems.slice(0, topK);
 }

@@ -205,12 +205,10 @@ function analyzeStrength(
   if (dayMaster === "Earth" && EARTH_MONTHS.includes(monthZhi)) {
     baseScore = 2;
   } else {
-    // @ts-ignore
-    baseScore = SEASONAL_BASE_SCORES[dayMaster][season] ?? 0;
+    baseScore = SEASONAL_BASE_SCORES[dayMaster]?.[season] ?? 0;
   }
 
-  // @ts-ignore
-  const relations = RELATIONSHIPS[dayMaster];
+  const relations = RELATIONSHIPS[dayMaster as keyof typeof RELATIONSHIPS];
 
   let supportScore = 0;
   let drainScore = 0;

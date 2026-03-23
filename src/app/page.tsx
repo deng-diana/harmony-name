@@ -1,95 +1,74 @@
-"use client"; // 👈 必须加，因为用到了 useEffect 和 useState
-
 import Link from "next/link";
 import Image from "next/image";
-import { useEffect, useRef, useState } from "react";
+import { ScrollAnimator } from "@/components/ScrollAnimator";
+import { StickyHeader } from "@/components/StickyHeader";
 
-// ⚠️ 请确保这两张图片已经放在 public 文件夹里，名字要对！
-// 如果名字不一样，请在这里修改路径，比如 "/my-logo.png"
-const LOGO_SRC = "/logo.png";
-const HERO_BG_SRC = "/hero-bg.png"; // 假设你把背景图命名为 hero-bg.png
+const WHY_ITEMS = [
+  {
+    icon: "📜",
+    title: "5,000 Years of Wisdom",
+    desc: "Built on ancient Ba Zi analysis, Zhou Yi divination, and Wu Xing theory.",
+  },
+  {
+    icon: "🤖",
+    title: "AI-Enhanced Authenticity",
+    desc: "Advanced AI analyzes thousands of classical texts to ensure cultural authenticity.",
+  },
+  {
+    icon: "🎯",
+    title: "Uniquely Yours",
+    desc: "Crafted from your unique birth chart. No two names are identical.",
+  },
+  {
+    icon: "🏮",
+    title: "Deep Cultural Connection",
+    desc: "Each name carries profound meaning from classical literature.",
+  },
+];
+
+const STEPS = [
+  {
+    step: "1",
+    title: "Share Your Story",
+    sub: "Birth Chart Analysis",
+    desc: "Tell us your birth details. Our AI analyzes your Ba Zi constitution.",
+  },
+  {
+    step: "2",
+    title: "Ancient Analysis",
+    sub: "Zhou Yi & Wu Xing",
+    desc: "Traditional principles meet modern theory to understand your energy.",
+  },
+  {
+    step: "3",
+    title: "Curated Names",
+    sub: "Character Selection",
+    desc: "We select characters from classical poetry that fit your constitution.",
+  },
+  {
+    step: "4",
+    title: "Discover Meaning",
+    sub: "Cultural Depth",
+    desc: "Explore deep cultural meanings and how each character influences you.",
+  },
+];
+
+const EXAMPLE_CHARS = [
+  { char: "林", pinyin: "Lín" },
+  { char: "雨", pinyin: "Yǔ" },
+  { char: "萱", pinyin: "Xuān" },
+];
 
 export default function LandingPage() {
-  const observerRef = useRef<IntersectionObserver | null>(null);
-  const [scrolled, setScrolled] = useState(false);
-
-  useEffect(() => {
-    // 滚动动画逻辑
-    const observerOptions = {
-      threshold: 0.1,
-      rootMargin: "0px 0px -50px 0px",
-    };
-
-    observerRef.current = new IntersectionObserver((entries) => {
-      entries.forEach((entry) => {
-        if (entry.isIntersecting) {
-          entry.target.classList.add("animate-fade-in-up"); // 使用 Tailwind 动画类
-          entry.target.classList.remove("opacity-0", "translate-y-10");
-        }
-      });
-    }, observerOptions);
-
-    document.querySelectorAll(".scroll-animate").forEach((el) => {
-      el.classList.add(
-        "opacity-0",
-        "translate-y-10",
-        "transition-all",
-        "duration-700"
-      ); // 初始化隐身
-      observerRef.current?.observe(el);
-    });
-
-    const handleScroll = () => {
-      setScrolled(window.scrollY > 50);
-    };
-
-    window.addEventListener("scroll", handleScroll);
-    return () => {
-      observerRef.current?.disconnect();
-      window.removeEventListener("scroll", handleScroll);
-    };
-  }, []);
-
   return (
-    <div className="bg-[#FDFBF7] font-sans text-stone-900 overflow-x-hidden">
-      {/* Navigation */}
-      <header
-        className={`fixed top-0 w-full z-50 transition-all duration-300 ${
-          scrolled
-            ? "bg-white/90 backdrop-blur-md border-b border-stone-100 py-2"
-            : "py-4"
-        }`}
-      >
-        <nav className="max-w-7xl mx-auto px-4 sm:px-6 flex items-center justify-between h-16">
-          <div className="flex items-center gap-3">
-            {/* Logo */}
-            <div className="relative w-10 h-10">
-              <Image
-                src={LOGO_SRC}
-                alt="HarmonyName Logo"
-                fill
-                className="object-contain"
-              />
-            </div>
-            <span className="font-serif text-xl font-bold tracking-tight text-stone-900">
-              HarmonyName
-            </span>
-          </div>
-
-          <Link href="/app">
-            <button className="px-6 py-2.5 rounded-full bg-stone-900 text-white hover:bg-stone-800 transition-all duration-300 font-medium text-sm shadow-lg hover:shadow-xl hover:-translate-y-0.5">
-              Find My Name
-            </button>
-          </Link>
-        </nav>
-      </header>
+    <ScrollAnimator>
+      <StickyHeader />
 
       {/* Hero Section */}
       <section className="relative min-h-screen flex items-center justify-center pt-20 overflow-hidden">
-        {/* 背景图层 */}
         <div className="absolute inset-0 z-0">
           <Image
-            src={HERO_BG_SRC}
+            src="/hero-bg.png"
             alt="Background"
             fill
             className="object-cover object-bottom opacity-90"
@@ -128,35 +107,14 @@ export default function LandingPage() {
               Why Choose HarmonyName?
             </h2>
             <p className="text-xl text-stone-600 max-w-3xl mx-auto">
-              In Chinese culture, a name is not merely an identifier—it's a
-              blessing, a destiny, a harmonious bridge between the individual
-              and the universe.
+              In Chinese culture, a name is not merely an identifier—it&apos;s a
+              blessing, a destiny, a harmonious bridge between the individual and
+              the universe.
             </p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            {[
-              {
-                icon: "📜",
-                title: "5,000 Years of Wisdom",
-                desc: "Built on ancient Ba Zi analysis, Zhou Yi divination, and Wu Xing theory.",
-              },
-              {
-                icon: "🤖",
-                title: "AI-Enhanced Authenticity",
-                desc: "Advanced AI analyzes thousands of classical texts to ensure cultural authenticity.",
-              },
-              {
-                icon: "🎯",
-                title: "Uniquely Yours",
-                desc: "Crafted from your unique birth chart. No two names are identical.",
-              },
-              {
-                icon: "🏮",
-                title: "Deep Cultural Connection",
-                desc: "Each name carries profound meaning from classical literature.",
-              },
-            ].map((item, i) => (
+            {WHY_ITEMS.map((item, i) => (
               <div
                 key={i}
                 className="bg-white p-8 rounded-2xl card-shadow-soft hover:card-shadow-soft-hover hover:-translate-y-1 transition-all duration-300 text-center scroll-animate"
@@ -185,32 +143,7 @@ export default function LandingPage() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            {[
-              {
-                step: "1",
-                title: "Share Your Story",
-                sub: "Birth Chart Analysis",
-                desc: "Tell us your birth details. Our AI analyzes your Ba Zi constitution.",
-              },
-              {
-                step: "2",
-                title: "Ancient Analysis",
-                sub: "Zhou Yi & Wu Xing",
-                desc: "Traditional principles meet modern theory to understand your energy.",
-              },
-              {
-                step: "3",
-                title: "Curated Names",
-                sub: "Character Selection",
-                desc: "We select characters from classical poetry that fit your constitution.",
-              },
-              {
-                step: "4",
-                title: "Discover Meaning",
-                sub: "Cultural Depth",
-                desc: "Explore deep cultural meanings and how each character influences you.",
-              },
-            ].map((item, i) => (
+            {STEPS.map((item, i) => (
               <div
                 key={i}
                 className="bg-stone-50 p-10 rounded-3xl text-center scroll-animate hover:bg-[#FDFBF7] transition-colors border border-stone-100"
@@ -233,22 +166,18 @@ export default function LandingPage() {
 
       {/* Cultural Section (Dark) */}
       <section className="py-32 px-4 bg-stone-900 text-white text-center relative overflow-hidden">
-        <div className="absolute inset-0 opacity-10 bg-[url('/hero-bg.png')] bg-cover bg-center"></div>
+        <div className="absolute inset-0 opacity-10 bg-[url('/hero-bg.png')] bg-cover bg-center" />
         <div className="relative z-10 max-w-4xl mx-auto scroll-animate">
           <h2 className="text-4xl md:text-5xl font-serif font-bold mb-8">
             Experience the Poetry of Names
           </h2>
           <p className="text-xl opacity-80 italic mb-16">
-            "A name carries the essence of one's destiny, like morning dew
-            reflecting the entire sky."
+            &ldquo;A name carries the essence of one&apos;s destiny, like
+            morning dew reflecting the entire sky.&rdquo;
           </p>
 
           <div className="flex justify-center gap-8 md:gap-16 mb-12">
-            {[
-              { char: "林", pinyin: "Lín" },
-              { char: "雨", pinyin: "Yǔ" },
-              { char: "萱", pinyin: "Xuān" },
-            ].map((c, i) => (
+            {EXAMPLE_CHARS.map((c, i) => (
               <div key={i} className="flex flex-col items-center">
                 <span className="text-sm opacity-60 font-mono mb-2">
                   {c.pinyin}
@@ -262,11 +191,11 @@ export default function LandingPage() {
 
           <div className="bg-white/10 backdrop-blur-sm p-8 rounded-2xl inline-block max-w-2xl">
             <p className="text-lg font-medium text-amber-200 mb-2">
-              "Forest Rain Lily"
+              &ldquo;Forest Rain Lily&rdquo;
             </p>
             <p className="opacity-80 text-sm leading-relaxed">
-              A name expressing serene strength against life's storms and the
-              surprising power of nature.
+              A name expressing serene strength against life&apos;s storms and
+              the surprising power of nature.
             </p>
           </div>
         </div>
@@ -285,7 +214,7 @@ export default function LandingPage() {
             modern AI technology.
           </p>
           <div className="text-xs flex justify-center gap-8 pt-8 border-t border-stone-800">
-            <span>© 2025 HarmonyName</span>
+            <span>&copy; {new Date().getFullYear()} HarmonyName</span>
             <a href="#" className="hover:text-white transition">
               Privacy
             </a>
@@ -295,6 +224,6 @@ export default function LandingPage() {
           </div>
         </div>
       </footer>
-    </div>
+    </ScrollAnimator>
   );
 }
