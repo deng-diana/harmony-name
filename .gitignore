@@ -26,6 +26,7 @@
 
 # sensitive / non-code documents
 /docs/
+scripts/poem-chunks.json
 
 # debug
 npm-debug.log*

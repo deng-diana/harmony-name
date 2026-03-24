@@ -9,7 +9,6 @@ import {
 import type { CommonSurname } from "@/lib/surnames";
 import type { ApiResponse } from "@/types";
 import {
-  Loader2,
   ArrowRight,
   RefreshCw,
 } from "lucide-react";
@@ -21,6 +20,7 @@ import { DestinyCard } from "@/components/DestinyCard";
 import { NameCard } from "@/components/NameCard";
 import { CitySearch } from "@/components/CitySearch";
 import { SurnameSelector } from "@/components/SurnameSelector";
+import { GenerationProgress } from "@/components/GenerationProgress";
 
 export default function Home() {
   const [birthDate, setBirthDate] = useState("");
@@ -50,6 +50,7 @@ export default function Home() {
   const [aiData, setAiData] = useState<ApiResponse | null>(null);
   const [isNamesLoading, setIsNamesLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [progress, setProgress] = useState({ step: 0, total: 4, message: "" });
 
   const { playingNameIndex, handlePlayName } = useTTS();
 
@@ -95,7 +96,14 @@ export default function Home() {
     setBaziResult(result);
     setPhase("results");
 
+    // SSE Streaming — 实时接收后端每一步的进度
+    // 技术原理:
+    //   1. fetch 发 POST 请求，后端返回 text/event-stream
+    //   2. 用 ReadableStream reader 逐行读取
+    //   3. 每收到一行 "data: {...}" 就解析并更新 UI
     try {
+      setProgress({ step: 0, total: 4, message: "Connecting..." });
+
       const response = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -113,35 +121,60 @@ export default function Home() {
         }),
       });
 
-      if (!response.ok) {
-        let errorData;
-        try {
-          errorData = await response.json();
-        } catch {
-          errorData = { error: `HTTP ${response.status}` };
-        }
-
-        console.error("API Error:", {
-          status: response.status,
-          code: errorData.code,
-          details: errorData.details,
-        });
-
-        const userMessage =
-          errorData.code === "ENV_MISSING"
-            ? "Server configuration error. Please contact support."
-            : errorData.code === "API_ERROR" ||
-                errorData.code === "EMPTY_RESPONSE"
-              ? "The AI service is temporarily unavailable. Please try again."
-              : errorData.details ||
-                "The ancient oracle is momentarily silent. Please try again.";
-
-        setError(userMessage);
+      if (!response.ok || !response.body) {
+        setError("The ancient oracle is momentarily silent. Please try again.");
+        setIsNamesLoading(false);
         return;
       }
 
-      const data = await response.json();
-      setAiData(data);
+      // 读取 SSE stream
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        // 把收到的字节解码为文本，追加到 buffer
+        buffer += decoder.decode(value, { stream: true });
+
+        // SSE 格式: 每条消息以 "\n\n" 分隔
+        const events = buffer.split("\n\n");
+        // 最后一项可能是不完整的消息，留在 buffer 里
+        buffer = events.pop() || "";
+
+        for (const event of events) {
+          // 每行格式: "data: {json}"
+          const dataLine = event
+            .split("\n")
+            .find((line) => line.startsWith("data: "));
+          if (!dataLine) continue;
+
+          const jsonStr = dataLine.slice(6); // 去掉 "data: " 前缀
+          try {
+            const parsed = JSON.parse(jsonStr);
+
+            if (parsed.type === "progress") {
+              setProgress({
+                step: parsed.step,
+                total: parsed.total,
+                message: parsed.message,
+              });
+            } else if (parsed.type === "result") {
+              setAiData(parsed.data);
+            } else if (parsed.type === "error") {
+              setError(
+                parsed.details ||
+                  parsed.error ||
+                  "The ancient oracle is momentarily silent."
+              );
+            }
+          } catch {
+            // 忽略无法解析的行
+          }
+        }
+      }
     } catch (e: unknown) {
       console.error("Request failed:", e);
       setError(
@@ -194,12 +227,11 @@ export default function Home() {
             </div>
 
             {isNamesLoading && (
-              <div className="py-20 text-center bg-white rounded-2xl border border-stone-100">
-                <Loader2 className="h-8 w-8 animate-spin mx-auto text-stone-300 mb-4" />
-                <p className="text-stone-600 font-medium animate-pulse">
-                  Consulting the ancient texts...
-                </p>
-              </div>
+              <GenerationProgress
+                currentStep={progress.step}
+                totalSteps={progress.total}
+                message={progress.message}
+              />
             )}
 
             {error && (

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { openai } from "@/lib/openai";
+import { claude } from "@/lib/claude";
 import { calculateBazi } from "@/lib/bazi";
 import { searchPoems } from "@/lib/retriever";
 import { gptRequestSchema } from "@/lib/schemas";
@@ -13,7 +13,7 @@ export const maxDuration = 60;
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
-  if (!process.env.OPENAI_API_KEY) {
+  if (!process.env.CLAUDE_API_KEY) {
     return NextResponse.json(
       { error: "Server configuration error", code: "ENV_MISSING" },
       { status: 500 }
@@ -58,15 +58,26 @@ export async function POST(request: Request) {
       wuxing,
     } = baziResult;
 
-    // RAG retrieval
+    // RAG retrieval — 用中文五行意象词搜索
+    const ELEMENT_IMAGERY: Record<string, string> = {
+      Wood: "春天 生长 树木 青翠 仁德 东风",
+      Fire: "光明 热情 朝阳 辉煌 礼仪 南方",
+      Earth: "大地 厚德 稳重 丰收 信义 中央",
+      Metal: "秋天 坚毅 清白 明月 义气 西方",
+      Water: "流水 智慧 深远 润泽 冬天 北方",
+    };
     let poemsContextText = "";
     try {
-      const query = `Chinese classical poetry and idioms related to ${favourableElements.join(" ")} elements`;
-      const retrievedPoems = await searchPoems(query, 5);
+      const imageryWords = favourableElements
+        .map((el: string) => ELEMENT_IMAGERY[el] || el)
+        .join(" ");
+      const query = `中国古典诗词 ${imageryWords}`;
+      const retrievedPoems = await searchPoems(query, 10);
+      const FAME_LABEL: Record<number, string> = { 3: "⭐经典名篇", 2: "⭐名家作品", 1: "其他" };
       poemsContextText = retrievedPoems
         .map(
           (p, i) =>
-            `[${i + 1}] Title:《${p.title}》 Author:${p.author} Content:${p.content}`
+            `[${i + 1}] [${FAME_LABEL[p.fameScore] || "其他"}] 《${p.title}》${p.author}(${p.dynasty}) | 出处:${p.source}\n    "${p.chunkText}"`
         )
         .join("\n");
     } catch {
@@ -90,17 +101,26 @@ export async function POST(request: Request) {
       birthInfo: `${birthDate} ${birthTime}`,
     });
 
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+    // ===== Claude API 调用 =====
+    // 和 OpenAI 的主要区别:
+    //   OpenAI:  messages: [{role:"system",...}, {role:"user",...}]
+    //   Claude:  system: "...",  messages: [{role:"user",...}]
+    //   Claude 的 system prompt 是独立参数，不放在 messages 里
+    const message = await claude.messages.create({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 4096,
+      temperature: 0.7,
+      system: createSystemPrompt(poemsContextText),
       messages: [
-        { role: "system", content: createSystemPrompt(poemsContextText) },
         { role: "user", content: userMessage },
       ],
-      response_format: { type: "json_object" },
-      temperature: 0.7,
     });
 
-    const content = completion.choices[0]?.message?.content;
+    // Claude 返回的格式也不同:
+    //   OpenAI: completion.choices[0].message.content (string)
+    //   Claude: message.content[0].text (content 是数组，每项有 type 和 text)
+    const textBlock = message.content.find((block) => block.type === "text");
+    const content = textBlock?.text;
 
     if (!content) {
       return NextResponse.json(
@@ -109,14 +129,22 @@ export async function POST(request: Request) {
       );
     }
 
+    // Claude 可能会在 JSON 前后加说明文字，需要提取纯 JSON
     let parsed;
     try {
+      // 尝试直接 parse
       parsed = JSON.parse(content);
     } catch {
-      return NextResponse.json(
-        { error: "AI returned invalid JSON", code: "PARSE_ERROR" },
-        { status: 500 }
-      );
+      // 如果失败，尝试从文本中提取 JSON 块
+      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        parsed = JSON.parse(jsonMatch[0]);
+      } else {
+        return NextResponse.json(
+          { error: "AI returned invalid JSON", code: "PARSE_ERROR" },
+          { status: 500 }
+        );
+      }
     }
 
     // Validate name count
@@ -138,7 +166,7 @@ export async function POST(request: Request) {
       },
     });
   } catch (error: unknown) {
-    console.error("GPT API Error:", error);
+    console.error("Claude API Error:", error);
     const message = error instanceof Error ? error.message : String(error);
     return NextResponse.json(
       { error: "Failed to process request", code: "API_ERROR", details: message },
