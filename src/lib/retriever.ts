@@ -12,7 +12,7 @@
  */
 
 import { openai } from "./openai";
-import { supabase } from "./supabase";
+import { supabaseAdmin } from "./supabaseAdmin";
 
 // ============================================================
 // 类型定义
@@ -71,7 +71,7 @@ export async function searchPoems(
   //   LIMIT 10
   //
   // 但我们不需要手写 SQL，Supabase 的 rpc() 帮我们调用之前定义的函数
-  const { data, error } = await supabase.rpc("search_poem_chunks", {
+  const { data, error } = await supabaseAdmin.rpc("search_poem_chunks", {
     query_embedding: JSON.stringify(queryVector),
     match_threshold: 0.25,   // 相似度低于 0.25 的不要 (太不相关)
     match_count: topK,
