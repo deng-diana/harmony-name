@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   calculateBazi,
   SHICHEN_MAPPING,
@@ -23,6 +24,7 @@ import { SurnameSelector } from "@/components/SurnameSelector";
 import { GenerationProgress } from "@/components/GenerationProgress";
 
 export default function Home() {
+  const router = useRouter();
   const [birthDate, setBirthDate] = useState("");
   const [birthTime, setBirthTime] = useState("unknown");
   const [gender, setGender] = useState<"male" | "female">("male");
@@ -122,6 +124,17 @@ export default function Home() {
       });
 
       if (!response.ok || !response.body) {
+        // 未登录 → 回登录页
+        if (response.status === 401) {
+          router.push("/login");
+          return;
+        }
+        // 积分不足 → 引导(Phase 4 会接上充值入口)
+        if (response.status === 402) {
+          setError("You're out of credits. Top up to reveal more names.");
+          setIsNamesLoading(false);
+          return;
+        }
         setError("The ancient oracle is momentarily silent. Please try again.");
         setIsNamesLoading(false);
         return;
@@ -163,6 +176,8 @@ export default function Home() {
               });
             } else if (parsed.type === "result") {
               setAiData(parsed.data);
+              // 余额已变,刷新顶栏的积分显示(重新执行 server layout)
+              router.refresh();
             } else if (parsed.type === "error") {
               setError(
                 parsed.details ||
