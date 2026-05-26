@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   calculateBazi,
   SHICHEN_MAPPING,
+  ARCHETYPES,
   type BaziResult,
 } from "@/lib/bazi";
 import type { CommonSurname } from "@/lib/surnames";
@@ -263,6 +264,11 @@ export default function Home() {
                   index={index}
                   playingNameIndex={playingNameIndex}
                   onPlayName={handlePlayName}
+                  archetype={
+                    ARCHETYPES[
+                      baziResult.dayMaster as keyof typeof ARCHETYPES
+                    ]
+                  }
                 />
               ))}
             </div>
