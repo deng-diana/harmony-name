@@ -4,6 +4,7 @@ import { Volume2 } from "lucide-react";
 import type { NameOption } from "@/types";
 import { renderPoem } from "@/lib/render-poem";
 import { ShareNameButton } from "@/components/ShareCard";
+import { SaveNameButton } from "@/components/SaveNameButton";
 
 interface NameCardProps {
   name: NameOption;
@@ -11,6 +12,7 @@ interface NameCardProps {
   playingNameIndex: number | null;
   onPlayName: (hanzi: string, index: number) => void;
   archetype?: { title: string; subtitle: string };
+  defaultSaved?: boolean;
 }
 
 export function NameCard({
@@ -19,6 +21,7 @@ export function NameCard({
   playingNameIndex,
   onPlayName,
   archetype,
+  defaultSaved,
 }: NameCardProps) {
   const cleanHanzi = name.hanzi.replace(/[{}]/g, "");
 
@@ -49,6 +52,7 @@ export function NameCard({
               <Volume2 className="w-5 h-5" />
             </button>
             <ShareNameButton name={name} archetype={archetype} />
+            <SaveNameButton name={name} initialSaved={defaultSaved} />
           </div>
           <div className="mt-6">
             <p className="text-lg md:text-xl text-stone-800 font-serif italic leading-relaxed">

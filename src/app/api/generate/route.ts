@@ -194,6 +194,22 @@ export async function POST(request: Request) {
         }
       }
 
+      // --- 存档到历史 (user_id 由 DB 默认 auth.uid() 填充;失败不影响返回) ---
+      const { error: archiveError } = await supabase.from("generations").insert({
+        input: {
+          gender,
+          dayMaster,
+          strength,
+          favourableElements,
+          avoidElements,
+          recommendedNameLength,
+        },
+        result: parsed,
+      });
+      if (archiveError) {
+        console.error("Failed to archive generation:", archiveError.message);
+      }
+
       // --- 完成 (把扣减后的余额一并返回,前端可即时刷新显示) ---
       await sendEvent("progress", STEPS.DONE);
       await sendEvent("result", { data: parsed, creditsRemaining });

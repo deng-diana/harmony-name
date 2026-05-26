@@ -1,17 +1,13 @@
 /**
- * /app 路由的守卫 (Server Component)
- * ==================================
- * 在页面渲染前,在服务端用 getUser() 校验登录态:
- * - 未登录 → 直接 redirect 到 /login (用户根本看不到 /app 的内容)
- * - 已登录 → 渲染页面,并在右上角显示邮箱 + 登出按钮
- *
- * 为什么放在 layout 而不是 page?
- * layout 包裹该路由下的所有页面,守卫写一次即可覆盖整个 /app 区域。
+ * /app 路由的守卫 + 顶部 Header (Server Component)
+ * ===============================================
+ * 渲染前用 getUser() 校验登录:未登录 → redirect /login;已登录 → 渲染。
+ * 顶部统一用 AppHeader(logo + 头像下拉菜单,内含 My Names / Sign out)。
  */
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getCredits } from "@/lib/credits";
-import { LogoutButton } from "@/components/LogoutButton";
+import { AppHeader } from "@/components/AppHeader";
 
 export default async function AppLayout({
   children,
@@ -27,24 +23,12 @@ export default async function AppLayout({
     redirect("/login");
   }
 
-  // 服务端读取积分余额。生成成功后前端调 router.refresh() 会重新执行这里,余额自动更新。
+  // 服务端读积分;生成成功后前端 router.refresh() 会重新执行这里,余额自动更新。
   const credits = (await getCredits(supabase)) ?? 0;
 
   return (
-    <div className="relative">
-      {/* 右上角浮动账户栏,不干扰原有页面布局 */}
-      <div className="fixed top-4 right-4 z-50 flex items-center gap-3">
-        <span
-          className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-full"
-          title="Naming credits remaining"
-        >
-          ✦ {credits} {credits === 1 ? "credit" : "credits"}
-        </span>
-        <span className="text-xs text-stone-500 hidden sm:inline">
-          {user.email}
-        </span>
-        <LogoutButton />
-      </div>
+    <div>
+      <AppHeader email={user.email ?? ""} credits={credits} />
       {children}
     </div>
   );
