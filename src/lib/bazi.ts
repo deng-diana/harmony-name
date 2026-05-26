@@ -1,4 +1,4 @@
-import { Solar, Lunar } from "lunar-javascript";
+import { Solar } from "lunar-javascript";
 
 export const SHICHEN_MAPPING = [
   { label: "Unknown (not sure)", value: "unknown" },
@@ -199,7 +199,7 @@ function analyzeStrength(
   monthZhi: string,
   allElements: string[]
 ) {
-  let season = MONTH_ZHI_SEASON[monthZhi];
+  const season = MONTH_ZHI_SEASON[monthZhi];
   let baseScore = 0;
 
   if (dayMaster === "Earth" && EARTH_MONTHS.includes(monthZhi)) {
@@ -275,64 +275,78 @@ function analyzeStrength(
   };
 }
 
-// 🧠 核心：计算真太阳时 (Local True Solar Time)
-// 用于确定“时柱” (Hour Pillar)
+// 时区偏移(分钟,东正西负)。用 Intl 稳健计算,与运行环境的本地时区无关。
+export function getTimezoneOffsetMinutes(timeZone: string, at: Date): number {
+  try {
+    const dtf = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      hour12: false,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+    const map: Record<string, number> = {};
+    for (const p of dtf.formatToParts(at)) {
+      if (p.type !== "literal") map[p.type] = Number(p.value);
+    }
+    // 某些环境午夜会给出 "24",归一到 0
+    const hour = map.hour === 24 ? 0 : map.hour;
+    const asUTC = Date.UTC(
+      map.year,
+      map.month - 1,
+      map.day,
+      hour,
+      map.minute,
+      map.second
+    );
+    return Math.round((asUTC - at.getTime()) / 60000);
+  } catch {
+    return 0; // 时区无效 → 退化为 0
+  }
+}
+
+// 🧠 核心:真太阳时 (Local True Solar Time) —— 用于确定"时柱"(Hour Pillar)
+// 经度每偏离标准经线 1°,真太阳时差 4 分钟。
 function calculateTrueSolarTime(
   date: Date,
   hour: number,
   longitude: number,
   timezone: string
 ): Date {
-  // 1. 获取时区偏移 (分钟)
-  const getOffset = (d: Date, tz: string) => {
-    try {
-      const str = d.toLocaleString("en-US", {
-        timeZone: tz,
-        timeZoneName: "shortOffset",
-      });
-      const offsetStr = str.split("GMT")[1];
-      if (!offsetStr) return 0;
-      const sign = offsetStr.includes("-") ? -1 : 1;
-      const [h, m] = offsetStr.replace(/[+-]/, "").split(":").map(Number);
-      return sign * (h * 60 + (m || 0));
-    } catch (e) {
-      return 0; // fallback
-    }
-  };
-
-  const timezoneOffsetMins = getOffset(date, timezone);
-
-  // 2. 平太阳时校正
-  // 标准经度 = offset / 60 * 15
+  const timezoneOffsetMins = getTimezoneOffsetMinutes(timezone, date);
   const standardMeridian = (timezoneOffsetMins / 60) * 15;
-  const longitudeDiff = longitude - standardMeridian;
-  const correctionMins = longitudeDiff * 4;
+  const correctionMins = (longitude - standardMeridian) * 4;
 
   const adjustedDate = new Date(date);
   adjustedDate.setHours(hour);
   adjustedDate.setMinutes(adjustedDate.getMinutes() + correctionMins);
-
   return adjustedDate;
 }
 
-// 🧠 核心：计算北京时间 (Beijing Time)
-// 用于确定“年柱、月柱” (Year/Month Pillar - Solar Terms)
-function getBeijingDate(date: Date, hour: number, timezone: string): Date {
-  // 1. 先拿到用户当地的绝对时间戳
-  const localDate = new Date(date);
-  localDate.setHours(hour);
-
-  // 2. 转成 UTC 字符串
-  const utcString = localDate.toLocaleString("en-US", { timeZone: timezone });
-  const utcDate = new Date(utcString); // 这是一个 hack，但在 server component 环境下可能不准
-
-  // 更稳健的方法：利用 getTime() 差值
-  // 我们直接用 Intl 拿到 UTC 时间
-  const isoString = localDate.toLocaleString("en-US", { timeZone: "UTC" });
-  const utcTimestamp = new Date(isoString).getTime();
-
-  // 3. 加上 8 小时 (8 * 60 * 60 * 1000)
-  return new Date(utcTimestamp + 28800000);
+// 🧠 核心:把"出生地墙上时间"换算成"北京时间(UTC+8)墙上时间",用于按节气定年/月柱。
+// 全程用 UTC 时间戳运算,【不受服务器本地时区影响】(修复旧 getBeijingDate 的 hack)。
+//   北京墙钟 = 出生瞬间(UTC) + 8h
+//   出生瞬间(UTC) = (把出生墙钟当作 UTC) − 出生地时区偏移
+export function getBeijingWallClock(
+  dateString: string,
+  hour: number,
+  timezone: string
+): { year: number; month: number; day: number; hour: number; minute: number } {
+  const [y, mo, d] = dateString.split("-").map(Number);
+  const wallAsUTC = Date.UTC(y, (mo || 1) - 1, d || 1, hour, 0, 0);
+  const offsetMin = getTimezoneOffsetMinutes(timezone, new Date(wallAsUTC));
+  const utcInstant = wallAsUTC - offsetMin * 60000;
+  const beijing = new Date(utcInstant + 480 * 60000); // +8h
+  return {
+    year: beijing.getUTCFullYear(),
+    month: beijing.getUTCMonth() + 1,
+    day: beijing.getUTCDate(),
+    hour: beijing.getUTCHours(),
+    minute: beijing.getUTCMinutes(),
+  };
 }
 
 export function calculateBazi(
@@ -380,14 +394,14 @@ export function calculateBazi(
   );
 
   if (city && !isUnknown) {
-    // 如果有城市信息，先把当地时间转成北京时间
-    const beijingDate = getBeijingDate(date, hour, city.timezone);
+    // 把出生地当地时间换算成北京时间,再按节气定年/月柱
+    const bj = getBeijingWallClock(dateString, hour, city.timezone);
     solarForPillars = Solar.fromYmdHms(
-      beijingDate.getFullYear(),
-      beijingDate.getMonth() + 1,
-      beijingDate.getDate(),
-      beijingDate.getHours(),
-      beijingDate.getMinutes(),
+      bj.year,
+      bj.month,
+      bj.day,
+      bj.hour,
+      bj.minute,
       0
     );
   }
@@ -449,7 +463,7 @@ export function calculateBazi(
 
   const dayMasterElement = GAN_WUXING[dayGan];
 
-  let charList = [
+  const charList = [
     { char: yearGan, type: "gan" },
     { char: yearZhi, type: "zhi" },
     { char: monthGan, type: "gan" },
