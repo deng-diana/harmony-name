@@ -13,6 +13,7 @@
 
 import { openai } from "./openai";
 import { supabaseAdmin } from "./supabaseAdmin";
+import { redis } from "./redis";
 
 // ============================================================
 // 类型定义
@@ -47,17 +48,23 @@ export interface ScoredPoem {
  *       → Supabase RPC (search_poem_chunks) → 数据库内用 HNSW 索引搜索
  *         → 返回最相似的诗句
  */
-// 进程内缓存: 喜用神组合有限(就那么几十种),相同 query 必得相同结果。
+// 缓存: 喜用神组合有限(就那么几十种),相同 query 必得相同结果。
 // 命中后省掉一次 OpenAI Embedding 调用 + 一次数据库往返 → 更快、更省。
+// 生产用 Upstash KV(跨实例共享、持久);本地无 Upstash 时退回进程内 Map。
 const poemCache = new Map<string, ScoredPoem[]>();
 
 export async function searchPoems(
   query: string,
   topK: number = 10
 ): Promise<ScoredPoem[]> {
-  const cacheKey = `${query}::${topK}`;
-  const cached = poemCache.get(cacheKey);
-  if (cached) return cached;
+  const cacheKey = `poems:${query}:${topK}`;
+  if (redis) {
+    const hit = await redis.get<ScoredPoem[]>(cacheKey);
+    if (hit) return hit;
+  } else {
+    const hit = poemCache.get(cacheKey);
+    if (hit) return hit;
+  }
 
   // Step 1: 把查询文本变成向量
   // "水 木 春天 润泽" → [0.012, -0.034, 0.056, ...] (1536个浮点数)
@@ -103,6 +110,10 @@ export async function searchPoems(
   }));
 
   // 只缓存成功结果(出错时上面已 return [],不会污染缓存)
-  poemCache.set(cacheKey, results);
+  if (redis) {
+    await redis.set(cacheKey, results, { ex: 60 * 60 * 24 * 30 }); // 30 天
+  } else {
+    poemCache.set(cacheKey, results);
+  }
   return results;
 }

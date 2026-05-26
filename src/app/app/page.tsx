@@ -135,6 +135,12 @@ export default function Home() {
           router.push("/login");
           return;
         }
+        // 触发限流 → 让用户稍等
+        if (response.status === 429) {
+          setError("You're going a bit fast — please wait a moment and try again.");
+          setIsNamesLoading(false);
+          return;
+        }
         // 积分不足 → 引导(Phase 4 会接上充值入口)
         if (response.status === 402) {
           setError("You're out of credits. Top up to reveal more names.");

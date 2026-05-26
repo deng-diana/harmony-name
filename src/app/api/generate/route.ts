@@ -16,6 +16,7 @@ import { searchPoems } from "@/lib/retriever";
 import { generateRequestSchema } from "@/lib/schemas";
 import { createClient } from "@/lib/supabase/server";
 import { deductCredit, refundCredit } from "@/lib/credits";
+import { generateRatelimit } from "@/lib/ratelimit";
 import {
   createSystemPromptStatic,
   buildPoemsBlock,
@@ -61,6 +62,17 @@ export async function POST(request: Request) {
       { error: "Please sign in to generate names", code: "UNAUTHENTICATED" },
       { status: 401 }
     );
+  }
+
+  // ===== ①.5 限流(防刷/防爆发烧钱;无 Upstash 配置时自动跳过)=====
+  if (generateRatelimit) {
+    const { success } = await generateRatelimit.limit(user.id);
+    if (!success) {
+      return Response.json(
+        { error: "Too many requests, please slow down.", code: "RATE_LIMITED" },
+        { status: 429 }
+      );
+    }
   }
 
   // ===== ② 校验请求体 =====
