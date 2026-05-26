@@ -27,13 +27,3 @@ export const generateRequestSchema = z.object({
     })
     .optional(),
 });
-
-export const gptRequestSchema = z.object({
-  birthDate: z.string(),
-  birthTime: z.string().default("unknown"),
-  gender: z.enum(["male", "female"]).default("male"),
-  surnamePreference: z.string().default("auto"),
-  specifiedSurname: z.string().default(""),
-  longitude: z.number().optional(),
-  timezone: z.string().optional(),
-});

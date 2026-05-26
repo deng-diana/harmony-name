@@ -37,7 +37,7 @@ Database schema lives in `supabase/migrations/001_create_poems_tables.sql`, then
 `.env.local` (gitignored) must define:
 - `OPENAI_API_KEY` — **embeddings only** (`text-embedding-3-small`, 1536-dim)
 - `CLAUDE_API_KEY` — name generation (note: **not** `ANTHROPIC_API_KEY`; `src/lib/claude.ts` reads `CLAUDE_API_KEY`)
-- `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` — pgvector access (service-role key; `supabase.ts` is server-only, never import it in client code)
+- `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` — pgvector access (service-role key; `supabaseAdmin.ts` is server-only, never import it in client code)
 
 OpenAI and Claude are **both** required and serve different roles: Anthropic has no embedding model, so RAG retrieval uses OpenAI while generation uses Claude (`claude-sonnet-4-20250514`). The README badge saying "GPT-4o-mini" is stale — generation migrated to Claude.
 
@@ -54,16 +54,15 @@ src/app/app/page.tsx  (the app; src/app/page.tsx is the landing page)
       → streams {type:"progress"} events, then {type:"result"}
 ```
 
-### Two API routes do nearly the same job — know which is which
+### The generation route — `src/app/api/generate/route.ts`
 
-- **`src/app/api/generate/route.ts`** — SSE streaming, **expects the BaZi profile already computed** (gender, dayMaster, strength, favourableElements…). This is what the frontend calls. Emits `progress`/`result`/`error` events as `data: {json}\n\n`.
-- **`src/app/api/gpt/route.ts`** — non-streaming JSON, **takes raw birth details and computes BaZi server-side** via `calculateBazi`, returns the names plus a `baziContext`. Effectively a legacy/alternate entry point.
+SSE streaming, **expects the BaZi profile already computed** (gender, dayMaster, strength, favourableElements…) since the page runs `calculateBazi()` client-side. Emits `progress`/`result`/`error` events as `data: {json}\n\n`. It is **gated**: requires an authenticated user (401), atomically deducts 1 credit before any AI call (402 if empty), and refunds on generation failure — see `src/lib/credits.ts`. Builds prompts via `src/lib/prompt.ts`, retrieves via `src/lib/retriever.ts`, calls Claude via `src/lib/claude.ts`, and inlines an `ELEMENT_IMAGERY` map that turns favourable elements into Chinese search terms.
 
-Both routes share `src/lib/prompt.ts` (system + user prompt builders), `src/lib/retriever.ts`, and `src/lib/claude.ts`, and both inline an identical `ELEMENT_IMAGERY` map that turns favourable elements into Chinese search terms. Keep these in sync if you touch one.
+(A second non-streaming `/api/gpt` route used to exist but was dead code and has been removed.)
 
 ### `src/lib/bazi.ts` is isomorphic — keep it dependency-light
 
-It's imported by the **client** page, by **both** API routes, and by the **MCP** server. It must not pull in server-only modules. Key logic:
+It's imported by the **client** page, by the **API** route, and by the **MCP** server. It must not pull in server-only modules. Key logic:
 - **True Solar Time vs Beijing Time**: year/month/day pillars are computed against Beijing time (for solar-term boundaries); the hour pillar uses longitude-corrected true solar time. Both require a `city {longitude, timezone}`; without it, calculation falls back to naive local time.
 - **Fuzzy time**: `birthTime === "unknown"` (or unparseable) drops the hour pillar entirely and computes from 3 pillars. `SHICHEN_MAPPING` exposes the 2-hour 时辰 blocks for the UI.
 - `analyzeStrength()` produces `strength` (Weak/Strong/Balanced), `favourableElements`, `avoidElements`, and `recommendedNameLength` from seasonal base scores + the Five Elements generate/control relationships. Favourable/avoid sets flip depending on strength.

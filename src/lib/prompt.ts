@@ -1,6 +1,6 @@
 /**
  * Shared system prompt for Chinese name generation.
- * Used by both /api/generate and /api/gpt routes.
+ * Used by the /api/generate route.
  *
  * 命名哲学体系 (internal, in Chinese for Claude's understanding):
  *   1. 五行平衡 — 补命理所缺
