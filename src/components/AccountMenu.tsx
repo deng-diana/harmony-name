@@ -6,7 +6,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ScrollText, LogOut } from "lucide-react";
+import { ScrollText, LogOut, CreditCard } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
 export function AccountMenu({
@@ -56,6 +56,13 @@ export function AccountMenu({
               className="flex items-center gap-2 px-4 py-3 text-sm text-stone-700 hover:bg-stone-50 transition"
             >
               <ScrollText className="w-4 h-4" /> My Names
+            </Link>
+            <Link
+              href="/buy"
+              onClick={() => setOpen(false)}
+              className="flex items-center gap-2 px-4 py-3 text-sm text-stone-700 hover:bg-stone-50 transition"
+            >
+              <CreditCard className="w-4 h-4" /> Buy credits
             </Link>
             <button
               onClick={handleLogout}

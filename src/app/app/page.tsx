@@ -141,10 +141,9 @@ export default function Home() {
           setIsNamesLoading(false);
           return;
         }
-        // 积分不足 → 引导(Phase 4 会接上充值入口)
+        // 积分不足 → 直接送去充值页
         if (response.status === 402) {
-          setError("You're out of credits. Top up to reveal more names.");
-          setIsNamesLoading(false);
+          router.push("/buy");
           return;
         }
         setError("The ancient oracle is momentarily silent. Please try again.");
