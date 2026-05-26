@@ -47,6 +47,7 @@ export default function Home() {
     null
   );
   const [surnameError, setSurnameError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
 
   const [phase, setPhase] = useState<"form" | "results">("form");
   const [baziResult, setBaziResult] = useState<BaziResult | null>(null);
@@ -58,8 +59,12 @@ export default function Home() {
   const { playingNameIndex, handlePlayName } = useTTS();
 
   const handleCalculate = async () => {
+    setFormError(null);
+    // 原生日期框只要没填完整(如只填了年月没填日),value 就是空字符串
     if (!birthDate) {
-      alert("Please select date");
+      setFormError(
+        "Please pick your full date of birth — year, month, and day."
+      );
       return;
     }
     setSurnameError(null);
@@ -382,6 +387,12 @@ export default function Home() {
           surnameError={surnameError}
           setSurnameError={setSurnameError}
         />
+
+        {formError && (
+          <div className="mb-4 text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg p-3">
+            {formError}
+          </div>
+        )}
 
         <button
           onClick={handleCalculate}
