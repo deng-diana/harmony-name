@@ -17,7 +17,8 @@ import { generateRequestSchema } from "@/lib/schemas";
 import { createClient } from "@/lib/supabase/server";
 import { deductCredit, refundCredit } from "@/lib/credits";
 import {
-  createSystemPrompt,
+  createSystemPromptStatic,
+  buildPoemsBlock,
   buildUserMessage,
   buildSurnameInstruction,
 } from "@/lib/prompt";
@@ -157,7 +158,15 @@ export async function POST(request: Request) {
         model: "claude-sonnet-4-20250514",
         max_tokens: 4096,
         temperature: 0.7,
-        system: createSystemPrompt(poemsContextText),
+        // 静态指令缓存(省 ~90% 输入 token);诗词块每次不同,不缓存
+        system: [
+          {
+            type: "text",
+            text: createSystemPromptStatic(),
+            cache_control: { type: "ephemeral" },
+          },
+          { type: "text", text: buildPoemsBlock(poemsContextText) },
+        ],
         messages: [{ role: "user", content: userMessage }],
       });
 

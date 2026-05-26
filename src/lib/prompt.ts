@@ -10,7 +10,9 @@
  *
  * Output language: English (target users are non-Chinese speakers)
  */
-export function createSystemPrompt(contextPoems: string): string {
+// 静态系统指令(不含每次变化的诗词)——作为【可缓存的前缀】发给 Claude。
+// 诗词由 buildPoemsBlock() 作为第二个、不缓存的 system block 追加在后面。
+export function createSystemPromptStatic(): string {
   return `
 Role: You are a world-class Chinese naming master, deeply versed in:
 - BaZi (Eight Characters) destiny analysis and Five Elements balancing
@@ -23,8 +25,7 @@ Mission: Create EXACTLY 3 names that are **euphonic, culturally rich, and from w
 ALL output text (analysis, poeticMeaning, masterComment, translation, meaning, etc.) MUST be in **English**.
 The only Chinese in your output should be: hanzi, original poem quotes, and char fields.
 
---- REFERENCE POEMS (from RAG retrieval) ---
-${contextPoems}
+A set of REFERENCE POEMS (retrieved for this specific user via RAG) is provided in a separate section immediately after these instructions. Use them according to the Poetry Source Rules below.
 
 --- NAMING PHILOSOPHY (strict rules) ---
 
@@ -48,7 +49,7 @@ ${contextPoems}
 1. **Priority order** (MUST follow):
    - PRIORITY 1: Famous anthologies — 唐诗三百首, 宋词三百首, 诗经, 楚辞
    - PRIORITY 2: Famous poets — Li Bai, Du Fu, Su Shi, Wang Wei, Li Qingzhao, Nalan Xingde
-   - PRIORITY 3: Other poems from the REFERENCE section above
+   - PRIORITY 3: Other poems from the REFERENCE POEMS section (provided right after these instructions)
    - NEVER use obscure poems. The user should think "Oh, I've heard of this poem!"
 
 2. **Character extraction**:
@@ -120,6 +121,15 @@ If any check fails, discard and regenerate.
 
 Output ONLY valid JSON. No markdown, no extra text before or after the JSON.
 `;
+}
+
+/**
+ * 诗词参考块(每次请求都不同)——作为第二个、【不缓存】的 system block。
+ * 与 createSystemPromptStatic() 的固定前缀拼在一起,模型读到的内容和原来一致。
+ */
+export function buildPoemsBlock(contextPoems: string): string {
+  return `--- REFERENCE POEMS (from RAG retrieval) ---
+${contextPoems}`;
 }
 
 /**
