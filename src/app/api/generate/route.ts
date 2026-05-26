@@ -187,9 +187,10 @@ export async function POST(request: Request) {
       await sendEvent("progress", STEPS.DONE);
       await sendEvent("result", { data: parsed, creditsRemaining });
     } catch (error: unknown) {
-      console.error("API Error:", error);
+      // 详细原因只记到服务端日志,绝不随 SSE 发给前端
       const errMessage = error instanceof Error ? error.message : String(error);
-      await failAndRefund({ error: "Failed to generate names", code: "API_ERROR", details: errMessage });
+      console.error("Generation failed:", errMessage);
+      await failAndRefund({ error: "Generation failed", code: "API_ERROR" });
     } finally {
       await writer.close();
     }

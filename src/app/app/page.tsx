@@ -179,10 +179,9 @@ export default function Home() {
               // 余额已变,刷新顶栏的积分显示(重新执行 server layout)
               router.refresh();
             } else if (parsed.type === "error") {
+              // 绝不向用户暴露内部报错细节(API key、堆栈等);失败已自动退款
               setError(
-                parsed.details ||
-                  parsed.error ||
-                  "The ancient oracle is momentarily silent."
+                "The naming master couldn't finish this time — your credit has been refunded. Please try again."
               );
             }
           } catch {
@@ -226,7 +225,8 @@ export default function Home() {
             {metaString}
           </div>
           <p className="text-xs text-stone-400 italic">
-            Decoded from ancient wisdom, powered by AI.
+            Decoded from ancient wisdom, powered by AI. For cultural &amp;
+            entertainment purposes.
           </p>
         </header>
 
