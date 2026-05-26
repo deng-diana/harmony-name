@@ -47,10 +47,18 @@ export interface ScoredPoem {
  *       → Supabase RPC (search_poem_chunks) → 数据库内用 HNSW 索引搜索
  *         → 返回最相似的诗句
  */
+// 进程内缓存: 喜用神组合有限(就那么几十种),相同 query 必得相同结果。
+// 命中后省掉一次 OpenAI Embedding 调用 + 一次数据库往返 → 更快、更省。
+const poemCache = new Map<string, ScoredPoem[]>();
+
 export async function searchPoems(
   query: string,
   topK: number = 10
 ): Promise<ScoredPoem[]> {
+  const cacheKey = `${query}::${topK}`;
+  const cached = poemCache.get(cacheKey);
+  if (cached) return cached;
+
   // Step 1: 把查询文本变成向量
   // "水 木 春天 润泽" → [0.012, -0.034, 0.056, ...] (1536个浮点数)
   const embeddingResponse = await openai.embeddings.create({
@@ -83,7 +91,7 @@ export async function searchPoems(
   }
 
   // Step 3: 格式化返回结果
-  return (data || []).map((row: Record<string, unknown>) => ({
+  const results: ScoredPoem[] = (data || []).map((row: Record<string, unknown>) => ({
     chunkText: row.chunk_text as string,
     title: row.poem_title as string,
     author: row.poem_author as string,
@@ -93,4 +101,8 @@ export async function searchPoems(
     fameScore: row.fame_score as number,
     similarity: row.similarity as number,
   }));
+
+  // 只缓存成功结果(出错时上面已 return [],不会污染缓存)
+  poemCache.set(cacheKey, results);
+  return results;
 }
