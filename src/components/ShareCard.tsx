@@ -28,6 +28,7 @@ export function ShareNameButton({
 }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   const cleanHanzi = name.hanzi.replace(/[{}]/g, "");
 
@@ -44,17 +45,24 @@ export function ShareNameButton({
     return res.blob();
   };
 
+  const downloadBlob = (blob: Blob) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${cleanHanzi}-harmonyname.png`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const handleSave = async () => {
     setBusy(true);
+    setError(null);
     try {
       const blob = await capture();
-      if (!blob) return;
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${cleanHanzi}-harmonyname.png`;
-      a.click();
-      URL.revokeObjectURL(url);
+      if (blob) downloadBlob(blob);
+      else setError("Couldn't create the image. Please try again.");
+    } catch {
+      setError("Couldn't create the image. Please try again.");
     } finally {
       setBusy(false);
     }
@@ -62,13 +70,18 @@ export function ShareNameButton({
 
   const handleShare = async () => {
     setBusy(true);
+    setError(null);
+    let blob: Blob | null = null;
     try {
-      const blob = await capture();
-      if (!blob) return;
+      blob = await capture();
+      if (!blob) {
+        setError("Couldn't create the image. Please try again.");
+        return;
+      }
       const file = new File([blob], `${cleanHanzi}-harmonyname.png`, {
         type: "image/png",
       });
-      // 手机端原生分享面板(可分享图片文件)
+      // 支持的浏览器(多为手机):原生分享面板
       if (
         typeof navigator !== "undefined" &&
         navigator.canShare?.({ files: [file] })
@@ -76,14 +89,17 @@ export function ShareNameButton({
         await navigator.share({
           files: [file],
           title: `My Chinese name: ${cleanHanzi}`,
-          text: `${cleanHanzi} (${name.pinyin}) — my authentic Chinese name, decoded from my birth chart ✦`,
+          text: `${cleanHanzi} (${name.pinyin}) — my authentic Chinese name ✦`,
         });
       } else {
-        // 桌面端无原生分享 → 退化为下载
-        await handleSave();
+        // 桌面端不支持分享文件 → 直接下载图片
+        downloadBlob(blob);
       }
-    } catch {
-      // 用户取消分享,忽略
+    } catch (e) {
+      if ((e as Error)?.name === "AbortError") return; // 用户主动取消
+      // 分享失败(如手势已过期)→ 退化为下载,保证有结果
+      if (blob) downloadBlob(blob);
+      else setError("Couldn't share. Please try Save image.");
     } finally {
       setBusy(false);
     }
@@ -174,6 +190,12 @@ export function ShareNameButton({
                 <X className="w-4 h-4" />
               </button>
             </div>
+
+            {error && (
+              <p className="text-sm text-red-200 bg-red-900/40 px-4 py-2 rounded-full">
+                {error}
+              </p>
+            )}
           </div>
         </div>
       )}
