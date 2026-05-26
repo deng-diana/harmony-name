@@ -23,7 +23,9 @@ import {
   buildSurnameInstruction,
 } from "@/lib/prompt";
 
-export const maxDuration = 60;
+// 流式 AI 生成可能耗时;放宽超时(Vercel 平台默认上限现为 300s)。
+// 运行时保持 Node(默认,Fluid Compute)——不要用 Edge。
+export const maxDuration = 300;
 export const dynamic = "force-dynamic";
 
 /** 进度步骤 (校验已移到流外,故只剩 3 步) */
