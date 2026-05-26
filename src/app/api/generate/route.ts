@@ -17,6 +17,7 @@ import { generateRequestSchema } from "@/lib/schemas";
 import { createClient } from "@/lib/supabase/server";
 import { deductCredit, refundCredit } from "@/lib/credits";
 import { generateRatelimit } from "@/lib/ratelimit";
+import * as Sentry from "@sentry/nextjs";
 import {
   createSystemPromptStatic,
   buildPoemsBlock,
@@ -229,6 +230,7 @@ export async function POST(request: Request) {
       // 详细原因只记到服务端日志,绝不随 SSE 发给前端
       const errMessage = error instanceof Error ? error.message : String(error);
       console.error("Generation failed:", errMessage);
+      Sentry.captureException(error); // 上报到 Sentry(我们自己 catch 了,需手动上报)
       await failAndRefund({ error: "Generation failed", code: "API_ERROR" });
     } finally {
       await writer.close();
