@@ -25,10 +25,18 @@ export default async function AppLayout({
 
   // 服务端读积分;生成成功后前端 router.refresh() 会重新执行这里,余额自动更新。
   const credits = (await getCredits(supabase)) ?? 0;
+  const avatarUrl =
+    (user.user_metadata?.avatar_url as string | undefined) ??
+    (user.user_metadata?.picture as string | undefined) ??
+    null;
 
   return (
     <div>
-      <AppHeader email={user.email ?? ""} credits={credits} />
+      <AppHeader
+        email={user.email ?? ""}
+        credits={credits}
+        avatarUrl={avatarUrl}
+      />
       {children}
     </div>
   );
