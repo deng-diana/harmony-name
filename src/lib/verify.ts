@@ -100,8 +100,9 @@ export function verifyCandidate(
   const chars = [c.surnameChar, ...c.givenChars];
   const tones = chars.map((ch) => pinyinOf(ch).tone);
   const distinctTones = new Set(tones);
-  // 仅当声调全同且是"真声调"(非 0 解析失败/轻声)时才判呆板,避免误杀
-  if (tones.length >= 2 && distinctTones.size === 1 && !distinctTones.has(0)) {
+  // 全同调只对【三字名(姓+2)】判呆板;两字名(姓+1)同调很常见也可接受
+  // (姓改不了,且周深/张飞皆双平),细腻平仄交给评审先生。非 0(解析成功)才判。
+  if (tones.length >= 3 && distinctTones.size === 1 && !distinctTones.has(0)) {
     reasons.push(`声调全同(${tones.join("")}),读来呆板`);
   }
   for (let i = 1; i < chars.length; i++) {

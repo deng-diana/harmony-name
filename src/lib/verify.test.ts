@@ -21,6 +21,7 @@ const ctx = (over: Partial<VerifyContext> = {}): VerifyContext => ({
     poem(7, "清兮"),
     poem(8, "江清"),
     poem(9, "甘露"),
+    poem(10, "江清溪"),
   ],
   favourableElements: ["Water", "Fire"],
   avoidElements: ["Earth"],
@@ -74,13 +75,21 @@ describe("verifyCandidate", () => {
     expect(r.reasons.join()).toMatch(/忌神/);
   });
 
-  it("rejects an all-same-tone name (江清: 1+1)", () => {
+  it("rejects an all-same-tone 3-char name (江清溪: 1+1+1)", () => {
     const r = verifyCandidate(
-      { lineId: 8, charSpan: "清", surnameChar: "江", givenChars: ["清"] },
+      { lineId: 10, charSpan: "清溪", surnameChar: "江", givenChars: ["清", "溪"] },
       ctx()
     );
     expect(r.ok).toBe(false);
     expect(r.reasons.join()).toMatch(/声调全同/);
+  });
+
+  it("ALLOWS a 2-char same-tone name (江清: 1+1 — surname fixed, left to the critic)", () => {
+    const r = verifyCandidate(
+      { lineId: 8, charSpan: "清", surnameChar: "江", givenChars: ["清"] },
+      ctx()
+    );
+    expect(r.reasons.join()).not.toMatch(/声调全同/);
   });
 
   it("rejects identical adjacent initials (林露: l-l)", () => {
