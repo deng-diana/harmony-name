@@ -23,8 +23,11 @@ export interface ComposerProfile {
 }
 
 export interface ComposerCandidate extends NameCandidate {
-  rationale?: string; // 英文:为何此名好听、平衡、得体
-  translation?: string; // 英文:所引诗句的翻译(诗句本身由代码回填)
+  poeticMeaning?: string; // 英文 2-3 句:名字的意象与寓意
+  translation?: string; // 英文:所引诗句的翻译(诗句原文由代码回填)
+  meanings?: Record<string, string>; // 字 → 英文释义(填 anatomy;五行/拼音由代码补)
+  tonePattern?: string; // 英文:声调走势
+  masterComment?: string; // 英文:点评为何出色
 }
 
 const MODEL = "claude-sonnet-4-20250514";
@@ -63,8 +66,11 @@ ALL prose output (analysis, rationale, translation) MUST be in ENGLISH. The only
       "charSpan": "<contiguous substring of that pool line, in Chinese>",
       "surnameChar": "<surname character>",
       "givenChars": ["<given char>", "<optional 2nd given char>"],
-      "rationale": "<English: why this name is euphonic, balanced (五行), and meaningful>",
-      "translation": "<English translation of the pool line you cited>"
+      "meanings": { "<each given char>": "<short English meaning>" },
+      "poeticMeaning": "<English, 2–3 sentences: the name's imagery and meaning>",
+      "translation": "<English translation of the pool line you cited>",
+      "tonePattern": "<English, e.g. 'rising + level + falling'>",
+      "masterComment": "<English: why this name excels — phonetics + elements + meaning>"
     }
     // ... EXACTLY 6 candidates total
   ]
@@ -154,8 +160,14 @@ export async function runComposer(
           givenChars: Array.isArray(c.givenChars)
             ? (c.givenChars as unknown[]).map(String)
             : [],
-          rationale: c.rationale ? String(c.rationale) : undefined,
+          poeticMeaning: c.poeticMeaning ? String(c.poeticMeaning) : undefined,
           translation: c.translation ? String(c.translation) : undefined,
+          meanings:
+            c.meanings && typeof c.meanings === "object"
+              ? (c.meanings as Record<string, string>)
+              : undefined,
+          tonePattern: c.tonePattern ? String(c.tonePattern) : undefined,
+          masterComment: c.masterComment ? String(c.masterComment) : undefined,
         };
       })
     : [];

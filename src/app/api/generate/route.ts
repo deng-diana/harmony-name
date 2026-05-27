@@ -24,6 +24,11 @@ import {
   buildUserMessage,
   buildSurnameInstruction,
 } from "@/lib/prompt";
+import { runNamingPipeline } from "@/lib/pipeline/orchestrate";
+
+// 命名管线 v2 总开关:仅当环境变量为 "true" 时启用接地多智能体管线;
+// 否则走旧的"单次 Claude + 提示词接地"路径(安全回退,不影响线上)。
+const PIPELINE_V2 = process.env.NAMING_PIPELINE_V2 === "true";
 
 // 流式 AI 生成可能耗时;放宽超时(Vercel 平台默认上限现为 300s)。
 // 运行时保持 Node(默认,Fluid Compute)——不要用 Edge。
@@ -133,77 +138,107 @@ export async function POST(request: Request) {
     };
 
     try {
-      // --- RAG 检索 (失败可降级,不计为整体失败) ---
-      await sendEvent("progress", STEPS.RAG);
-      let poemsContextText = "";
-      try {
-        const imageryWords = favourableElements
-          .map((el: string) => ELEMENT_IMAGERY[el] || el)
-          .join(" ");
-        const retrievedPoems = await searchPoems(`中国古典诗词 ${imageryWords}`, 15);
-        const FAME_LABEL: Record<number, string> = { 3: "⭐经典名篇", 2: "⭐名家作品", 1: "其他" };
-        poemsContextText = retrievedPoems
-          .map(
-            (p, i) =>
-              `[${i + 1}] [${FAME_LABEL[p.fameScore] || "其他"}] 《${p.title}》${p.author}(${p.dynasty}) | 出处:${p.source}\n    "${p.chunkText}"`
-          )
-          .join("\n");
-      } catch {
-        console.warn("RAG Search failed, proceeding with internal knowledge.");
-      }
-
-      // --- Claude 生成 ---
-      await sendEvent("progress", STEPS.GENERATE);
       const surnameInstruction = buildSurnameInstruction(
         surnamePreference,
         specifiedSurname,
         dayMaster
       );
-      const userMessage = buildUserMessage({
-        gender,
-        dayMaster,
-        strength,
-        favourableElements,
-        avoidElements,
-        surnameInstruction,
-        recommendedNameLength,
-      });
 
-      const message = await claude.messages.create({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 4096,
-        temperature: 0.7,
-        // 静态指令缓存(省 ~90% 输入 token);诗词块每次不同,不缓存
-        system: [
+      let parsed: unknown;
+
+      if (PIPELINE_V2) {
+        // ===== v2:接地多智能体管线(取名先生 → 校验 → 按编号回填真出处)=====
+        const result = await runNamingPipeline(
           {
-            type: "text",
-            text: createSystemPromptStatic(),
-            cache_control: { type: "ephemeral" },
+            gender,
+            dayMaster,
+            strength,
+            favourableElements,
+            avoidElements,
+            recommendedNameLength,
+            surnameInstruction,
           },
-          { type: "text", text: buildPoemsBlock(poemsContextText) },
-        ],
-        messages: [{ role: "user", content: userMessage }],
-      });
-
-      const textBlock = message.content.find((block) => block.type === "text");
-      const content = textBlock?.text;
-      if (!content) {
-        await failAndRefund({ error: "AI returned empty content", code: "EMPTY_RESPONSE" });
-        await writer.close();
-        return;
-      }
-
-      let parsed;
-      try {
-        parsed = JSON.parse(content);
-      } catch {
-        const jsonMatch = content.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          parsed = JSON.parse(jsonMatch[0]);
-        } else {
-          await failAndRefund({ error: "AI returned invalid JSON", code: "PARSE_ERROR" });
+          {
+            onProgress: (step, total, message) => {
+              void sendEvent("progress", { step, total, message });
+            },
+          }
+        );
+        if (!result.names || result.names.length === 0) {
+          await failAndRefund({
+            error: "Couldn't compose verified names this time",
+            code: "NO_VERIFIED_NAMES",
+          });
           await writer.close();
           return;
+        }
+        parsed = result;
+      } else {
+        // ===== 旧路径:单次 Claude + 仅靠提示词接地(flag 关闭时保留)=====
+        await sendEvent("progress", STEPS.RAG);
+        let poemsContextText = "";
+        try {
+          const imageryWords = favourableElements
+            .map((el: string) => ELEMENT_IMAGERY[el] || el)
+            .join(" ");
+          const retrievedPoems = await searchPoems(`中国古典诗词 ${imageryWords}`, 15);
+          const FAME_LABEL: Record<number, string> = { 3: "⭐经典名篇", 2: "⭐名家作品", 1: "其他" };
+          poemsContextText = retrievedPoems
+            .map(
+              (p, i) =>
+                `[${i + 1}] [${FAME_LABEL[p.fameScore] || "其他"}] 《${p.title}》${p.author}(${p.dynasty}) | 出处:${p.source}\n    "${p.chunkText}"`
+            )
+            .join("\n");
+        } catch {
+          console.warn("RAG Search failed, proceeding with internal knowledge.");
+        }
+
+        await sendEvent("progress", STEPS.GENERATE);
+        const userMessage = buildUserMessage({
+          gender,
+          dayMaster,
+          strength,
+          favourableElements,
+          avoidElements,
+          surnameInstruction,
+          recommendedNameLength,
+        });
+
+        const message = await claude.messages.create({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 4096,
+          temperature: 0.7,
+          // 静态指令缓存(省 ~90% 输入 token);诗词块每次不同,不缓存
+          system: [
+            {
+              type: "text",
+              text: createSystemPromptStatic(),
+              cache_control: { type: "ephemeral" },
+            },
+            { type: "text", text: buildPoemsBlock(poemsContextText) },
+          ],
+          messages: [{ role: "user", content: userMessage }],
+        });
+
+        const textBlock = message.content.find((block) => block.type === "text");
+        const content = textBlock?.text;
+        if (!content) {
+          await failAndRefund({ error: "AI returned empty content", code: "EMPTY_RESPONSE" });
+          await writer.close();
+          return;
+        }
+
+        try {
+          parsed = JSON.parse(content);
+        } catch {
+          const jsonMatch = content.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            parsed = JSON.parse(jsonMatch[0]);
+          } else {
+            await failAndRefund({ error: "AI returned invalid JSON", code: "PARSE_ERROR" });
+            await writer.close();
+            return;
+          }
         }
       }
 
@@ -224,7 +259,7 @@ export async function POST(request: Request) {
       }
 
       // --- 完成 (把扣减后的余额一并返回,前端可即时刷新显示) ---
-      await sendEvent("progress", STEPS.DONE);
+      if (!PIPELINE_V2) await sendEvent("progress", STEPS.DONE);
       await sendEvent("result", { data: parsed, creditsRemaining });
     } catch (error: unknown) {
       // 详细原因只记到服务端日志,绝不随 SSE 发给前端
