@@ -139,7 +139,15 @@ function hydrate(c: ComposerCandidate, pool: ScoredPoem[]): NameOption {
   const braced = [...c.charSpan]
     .map((ch) => (c.givenChars.includes(ch) ? `{${ch}}` : ch))
     .join("");
-  const original = line ? line.chunkText.replace(c.charSpan, braced) : "";
+  // 用 indexOf 定位再切片,而非 replace —— replace 只替换首个匹配,
+  // 若 charSpan 在同一句里多次出现会把大括号标到错误位置。
+  const idx = line ? line.chunkText.indexOf(c.charSpan) : -1;
+  const original =
+    line && idx >= 0
+      ? line.chunkText.slice(0, idx) +
+        braced +
+        line.chunkText.slice(idx + c.charSpan.length)
+      : line?.chunkText ?? "";
   const source = line
     ? `《${line.title}》— ${line.author} (${line.dynasty})`
     : "";

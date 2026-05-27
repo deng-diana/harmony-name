@@ -168,7 +168,7 @@ export async function searchLinesByChars(
 
   const results: ScoredPoem[] = (data || []).map(
     (row: Record<string, unknown>) => ({
-      chunkId: row.chunk_id as number,
+      chunkId: Number(row.chunk_id),
       chunkText: row.chunk_text as string,
       title: row.poem_title as string,
       author: row.poem_author as string,

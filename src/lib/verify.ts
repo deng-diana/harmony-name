@@ -70,10 +70,8 @@ export function verifyCandidate(
     }
   }
 
-  // ② 黑名单 / 性别禁用(名字字 + 姓 —— auto 模式下姓由 LLM 给出,也要拦黑名单)
-  if (isHardBlacklisted(c.surnameChar)) {
-    reasons.push(`姓「${c.surnameChar}」属黑名单字`);
-  }
+  // ② 黑名单 / 性别禁用(仅查"名"字;姓不查黑名单 —— 王/何/莫 等都是常见姓氏,
+  //    不能因它们在虚词/僭越表里就拒掉用户的真实姓氏)
   for (const ch of c.givenChars) {
     if (isHardBlacklisted(ch)) reasons.push(`「${ch}」入诗不入名(黑名单)`);
     if (ctx.gender && isGenderForbidden(ch, ctx.gender)) {

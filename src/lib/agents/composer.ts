@@ -47,6 +47,7 @@ ALL prose output (analysis, rationale, translation) MUST be in ENGLISH. The only
 3. Every character in "givenChars" MUST appear inside your "charSpan".
 4. You output NO poem text, NO source/title/author, NO full line — only lineId + charSpan + the chars. (The system fills the real citation from the database.)
 5. Prefer a charSpan that is a meaningful 2-character word/image occurring contiguously in one line (e.g. 清明, 明月, 望舒, 自清) — this is the gold standard (又真又美).
+6. The two given characters need NOT be directly adjacent: your charSpan MAY include an intervening function word, then you drop that word from givenChars. E.g. line 桃之夭夭 → charSpan "桃之夭", givenChars ["桃","夭"], name 桃夭. This unlocks many classic 《诗经》/《楚辞》 names. Keep the span tight (≤ 8 characters).
 
 === NAMING CRAFT (make names 讲究 and natural, never weird) ===
 • 五行: at least one given character must carry a FAVOURABLE element; NEVER use a character of an AVOID element. Use the CANDIDATE CHARS list as a guide to which characters carry the favourable elements.

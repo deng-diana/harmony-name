@@ -106,12 +106,12 @@ describe("verifyCandidate", () => {
     expect(r.reasons.join()).toMatch(/过长/);
   });
 
-  it("rejects a blacklisted surname (auto-mode safety, 王=overweening)", () => {
+  it("does NOT reject a common surname that happens to be on the blacklist (王/何/莫)", () => {
+    // 王 is in the overweening list as a GIVEN char, but it's the most common surname.
     const r = verifyCandidate(
       { lineId: 1, charSpan: "清明", surnameChar: "王", givenChars: ["清", "明"] },
       ctx()
     );
-    expect(r.ok).toBe(false);
-    expect(r.reasons.join()).toMatch(/姓.*黑名单/);
+    expect(r.ok).toBe(true);
   });
 });

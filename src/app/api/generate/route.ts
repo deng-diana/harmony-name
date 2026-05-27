@@ -160,7 +160,9 @@ export async function POST(request: Request) {
           },
           {
             onProgress: (step, total, message) => {
-              void sendEvent("progress", { step, total, message });
+              // fire-and-forget,但吞掉 rejection:客户端断开后再写会 reject,
+              // 不 catch 会变成 unhandledRejection。
+              sendEvent("progress", { step, total, message }).catch(() => {});
             },
           }
         );
