@@ -25,6 +25,7 @@
     "next": "^16.2.6",
     "node-fetch": "^3.3.2",
     "openai": "^6.9.1",
+    "pinyin-pro": "^3.28.1",
     "react": "19.2.0",
     "react-dom": "19.2.0",
     "stripe": "^22.1.1",
