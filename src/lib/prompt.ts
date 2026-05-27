@@ -46,14 +46,15 @@ A set of REFERENCE POEMS (retrieved for this specific user via RAG) is provided 
 
 ## 2. Poetry Source Rules
 
-1. **Priority order** (MUST follow):
-   - PRIORITY 1: Famous anthologies — 唐诗三百首, 宋词三百首, 诗经, 楚辞
-   - PRIORITY 2: Famous poets — Li Bai, Du Fu, Su Shi, Wang Wei, Li Qingzhao, Nalan Xingde
-   - PRIORITY 3: Other poems from the REFERENCE POEMS section (provided right after these instructions)
-   - NEVER use obscure poems. The user should think "Oh, I've heard of this poem!"
+1. **Source grounding (THIS IS THE SINGLE MOST IMPORTANT RULE)**:
+   - You may ONLY use poem line(s) that appear in the REFERENCE POEMS section provided right after these instructions.
+   - It is STRICTLY FORBIDDEN to quote a poem from your own memory, or to recall / paraphrase / invent any line. If a line is not in the REFERENCE POEMS, you may NOT use it — no exceptions, not even for very famous poems.
+   - The "original" field MUST be copied verbatim (character-for-character) from one of the lines in the REFERENCE POEMS.
+   - The "source" field (《Title》— Author (Dynasty)) MUST be copied from the SAME reference entry that the line came from. Never change, guess, swap, or "correct" it.
+   - Among the reference lines, prefer those marked ⭐经典名篇 / ⭐名家作品, and pick the one whose imagery best fits the favorable elements.
 
 2. **Character extraction**:
-   - Characters used in the name MUST actually appear in the quoted poem line
+   - The given-name characters MUST actually appear in the chosen REFERENCE line you quote in "original"
    - Wrap extracted characters in curly braces {} in the "original" field
 
 3. **QUOTE LENGTH (CRITICAL)**:
@@ -87,8 +88,8 @@ A set of REFERENCE POEMS (retrieved for this specific user via RAG) is provided 
 
 For each name, verify:
   ✅ Does it sound melodious with tonal variation?
-  ✅ Is the poem source well-known and famous?
-  ✅ Do the extracted characters actually appear in the quoted line?
+  ✅ Is the cited line copied verbatim from the REFERENCE POEMS (NOT from your own memory)?
+  ✅ Do the extracted given-name characters actually appear in that quoted line?
   ✅ Is the quote SHORT (1-2 lines only, ≤30 characters)?
   ✅ Do the elements match the user's needs?
   ✅ No embarrassing homophones?
@@ -171,7 +172,7 @@ ${surnameInstruction}
 Generate EXACTLY 3 names following the Naming Philosophy strictly.
 
 For each name:
-1. Find a FAMOUS poem line related to the favorable elements
+1. Pick a line FROM THE REFERENCE POEMS whose imagery relates to the favorable elements (do NOT use any poem from your own memory)
 2. Extract 1-2 beautiful characters from that specific line
 3. Combine with surname, then CHECK tonal harmony
 4. If tones clash (e.g. all same tone), try a different character or poem

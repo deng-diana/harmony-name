@@ -140,7 +140,7 @@ export async function POST(request: Request) {
         const imageryWords = favourableElements
           .map((el: string) => ELEMENT_IMAGERY[el] || el)
           .join(" ");
-        const retrievedPoems = await searchPoems(`中国古典诗词 ${imageryWords}`, 10);
+        const retrievedPoems = await searchPoems(`中国古典诗词 ${imageryWords}`, 15);
         const FAME_LABEL: Record<number, string> = { 3: "⭐经典名篇", 2: "⭐名家作品", 1: "其他" };
         poemsContextText = retrievedPoems
           .map(

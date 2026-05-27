@@ -67,6 +67,14 @@ export default function Home() {
       );
       return;
     }
+    // 出生城市必填:它提供经度+时区,是「真太阳时」和「北京时间换算」的前提,
+    // 没有它就只能退回不准的本地时间。算命产品本就该问出生地。
+    if (!selectedCity) {
+      setFormError(
+        "Please select your birth city — it's required for an accurate solar-time calculation."
+      );
+      return;
+    }
     setSurnameError(null);
 
     let apiSpecifiedSurname = "";
