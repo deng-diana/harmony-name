@@ -21,6 +21,7 @@ import { redis } from "./redis";
 
 /** 搜索结果: 一条诗句 + 相似度分数 + 经典度 */
 export interface ScoredPoem {
+  chunkId: number;      // 诗句行号 (DB 主键) —— 命名管线"按编号回填真出处"靠它
   chunkText: string;    // 诗句/联 (如 "春眠不觉晓，处处闻啼鸟。")
   title: string;        // 所属诗词标题
   author: string;       // 作者
@@ -28,7 +29,8 @@ export interface ScoredPoem {
   source: string;       // 来源选本 (唐诗三百首/宋词三百首/诗经...)
   fullContent: string;  // 完整诗词内容
   fameScore: number;    // 经典度 (3=名篇, 2=名家, 1=一般)
-  similarity: number;   // 加权相似度 (70%语义 + 30%经典度)
+  similarity: number;   // 加权相似度 (70%语义 + 30%经典度);按字检索时为 0
+  coverage?: number;    // 按字检索: 该句命中了几个候选字
 }
 
 // ============================================================
@@ -99,6 +101,7 @@ export async function searchPoems(
 
   // Step 3: 格式化返回结果
   const results: ScoredPoem[] = (data || []).map((row: Record<string, unknown>) => ({
+    chunkId: row.chunk_id as number,
     chunkText: row.chunk_text as string,
     title: row.poem_title as string,
     author: row.poem_author as string,
@@ -116,4 +119,101 @@ export async function searchPoems(
     poemCache.set(cacheKey, results);
   }
   return results;
+}
+
+// ============================================================
+// 命名管线 v2 —— 按"候选字"检索真实诗句 + 合并候选池
+// ============================================================
+
+// 单条诗句(chunk)允许的最大长度。超过即视为"散文整段"(如楚辞《卜居》《渔父》
+// 未被正确切分的长 chunk),名字应从"一联"里取字,故过滤掉。
+const MAX_POOL_LINE_LEN = 34;
+
+/**
+ * 按候选字检索:返回真实含【任一】候选字的名句(coverage 越高、越经典越靠前)。
+ * 调 006 迁移建的 RPC `search_lines_by_chars`。结果同样缓存(候选字组合有限)。
+ */
+export async function searchLinesByChars(
+  chars: string[],
+  topK: number = 20
+): Promise<ScoredPoem[]> {
+  const uniq = [...new Set(chars.filter(Boolean))];
+  if (uniq.length === 0) return [];
+
+  const cacheKey = `lines:${[...uniq].sort().join("")}:${topK}`;
+  if (redis) {
+    const hit = await redis.get<ScoredPoem[]>(cacheKey);
+    if (hit) return hit;
+  } else {
+    const hit = poemCache.get(cacheKey);
+    if (hit) return hit;
+  }
+
+  const { data, error } = await supabaseAdmin.rpc("search_lines_by_chars", {
+    chars: uniq,
+    match_count: topK,
+  });
+  if (error) {
+    console.error("按字检索失败:", error.message);
+    return [];
+  }
+
+  const results: ScoredPoem[] = (data || []).map(
+    (row: Record<string, unknown>) => ({
+      chunkId: row.chunk_id as number,
+      chunkText: row.chunk_text as string,
+      title: row.poem_title as string,
+      author: row.poem_author as string,
+      dynasty: row.dynasty as string,
+      source: row.source as string,
+      fullContent: row.full_content as string,
+      fameScore: row.fame_score as number,
+      similarity: 0,
+      coverage: row.coverage as number,
+    })
+  );
+
+  if (redis) {
+    await redis.set(cacheKey, results, { ex: 60 * 60 * 24 * 30 });
+  } else {
+    poemCache.set(cacheKey, results);
+  }
+  return results;
+}
+
+/**
+ * 合并候选池:并联两路检索 →
+ *   (a) 按字检索:真实含喜用神候选字的名句(保证"字在真句里")
+ *   (b) 语义检索:意象相关的名句(丰富意境)
+ * 按 chunkId 去重、过滤超长散文 chunk、截断到 cap 条。
+ * 这是取名先生【唯一】可引用的诗句宇宙 —— 出处只能从这里来。
+ */
+export async function buildVerifiedPool(opts: {
+  favourableChars: string[]; // 来自字库的喜用神候选字
+  imageryQuery: string; // 语义检索用的意象词串
+  perArm?: number;
+  cap?: number;
+}): Promise<ScoredPoem[]> {
+  const perArm = opts.perArm ?? 20;
+  const cap = opts.cap ?? 25;
+
+  const [byChars, bySem] = await Promise.all([
+    opts.favourableChars.length
+      ? searchLinesByChars(opts.favourableChars, perArm)
+      : Promise.resolve([] as ScoredPoem[]),
+    searchPoems(opts.imageryQuery, perArm),
+  ]);
+
+  const seen = new Set<number>();
+  const pool: ScoredPoem[] = [];
+  // 先放"按字"(字在真句里,接地最强),再补"语义"
+  for (const p of [...byChars, ...bySem]) {
+    if (p.chunkId == null || seen.has(p.chunkId)) continue;
+    const text = p.chunkText || "";
+    if (text.length === 0 || text.length > MAX_POOL_LINE_LEN) continue; // 滤掉散文长段
+    seen.add(p.chunkId);
+    pool.push(p);
+    if (pool.length >= cap) break;
+  }
+  return pool;
 }
