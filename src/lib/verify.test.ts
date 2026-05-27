@@ -92,13 +92,14 @@ describe("verifyCandidate", () => {
     expect(r.reasons.join()).not.toMatch(/声调全同/);
   });
 
-  it("rejects identical adjacent initials (林露: l-l)", () => {
+  it("ALLOWS identical adjacent initials now (双声 like 林露 left to the critic)", () => {
+    // 露 is feminineLean(Water,favourable) → use female ctx so it's not a gender clash
     const r = verifyCandidate(
       { lineId: 9, charSpan: "露", surnameChar: "林", givenChars: ["露"] },
-      ctx()
+      ctx({ gender: "female" })
     );
-    expect(r.ok).toBe(false);
-    expect(r.reasons.join()).toMatch(/声母相同/);
+    expect(r.reasons.join()).not.toMatch(/声母/);
+    expect(r.ok).toBe(true);
   });
 
   it("rejects an over-long charSpan (whole long line, not a tight word)", () => {

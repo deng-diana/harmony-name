@@ -9,7 +9,6 @@
  *   4. 音律(硬性):声调不全同;相邻字声母不相同(更细的叠韵/谐音交给评审先生)
  * 为什么是代码而非 LLM:让 LLM 判"字在不在句里",它自己也可能瞎说"在"。
  */
-import { pinyin } from "pinyin-pro";
 import type { ScoredPoem } from "./retriever";
 import {
   elementOfChar,
@@ -39,9 +38,6 @@ export interface VerifyResult {
   reasons: string[]; // 不通过原因(结构化文字,喂给评审先生做重生成反馈)
 }
 
-const initialOf = (c: string): string =>
-  (pinyin(c, { pattern: "initial", type: "string" }) as string) || "";
-
 // charSpan 应是名字字所在的"紧凑片段"(取名于一句之内连用数字),
 // 不能拿整句长诗来"接地"。给名字字数 + 少量余量。
 const MAX_SPAN_LEN = 8;
@@ -67,6 +63,15 @@ export function verifyCandidate(
         reasons.push(`「${ch}」未出现在所引诗句中`);
       } else if (c.charSpan && !c.charSpan.includes(ch)) {
         reasons.push(`「${ch}」不在所标 charSpan 内`);
+      }
+    }
+    // charSpan 内被"跳过"的字(非名字字)只能是虚词(黑名单),否则等于从"窈窕淑女"
+    // 抠出"窈女"、把实字"窕淑"丢掉 —— 不允许跳过实字。
+    if (c.charSpan && line.chunkText.includes(c.charSpan)) {
+      for (const ch of c.charSpan) {
+        if (!c.givenChars.includes(ch) && !isHardBlacklisted(ch)) {
+          reasons.push(`charSpan 中夹了实字「${ch}」(只能跳过虚词)`);
+        }
       }
     }
   }
@@ -96,21 +101,14 @@ export function verifyCandidate(
     if (e && ctx.avoidElements.includes(e)) reasons.push(`「${ch}」属忌神(${e})`);
   });
 
-  // ④ 音律(硬性):全同调 / 相邻声母相同
+  // ④ 音律(硬性,从严):仅拦【三字名全同调】这种明显呆板。
+  // 相邻声母相同(双声,如 李莉/刘亮)其实常悦耳,且姓的声母改不了,故不硬拦,
+  // 交评审先生做减分;更细的平仄/叠韵同理。两字名同调亦放行(周深/张飞)。
   const chars = [c.surnameChar, ...c.givenChars];
   const tones = chars.map((ch) => pinyinOf(ch).tone);
   const distinctTones = new Set(tones);
-  // 全同调只对【三字名(姓+2)】判呆板;两字名(姓+1)同调很常见也可接受
-  // (姓改不了,且周深/张飞皆双平),细腻平仄交给评审先生。非 0(解析成功)才判。
   if (tones.length >= 3 && distinctTones.size === 1 && !distinctTones.has(0)) {
     reasons.push(`声调全同(${tones.join("")}),读来呆板`);
-  }
-  for (let i = 1; i < chars.length; i++) {
-    const a = initialOf(chars[i - 1]);
-    const b = initialOf(chars[i]);
-    if (a && b && a === b) {
-      reasons.push(`「${chars[i - 1]}${chars[i]}」声母相同(${a}-),拗口`);
-    }
   }
 
   return { ok: reasons.length === 0, reasons };

@@ -47,7 +47,7 @@ ALL prose output (analysis, rationale, translation) MUST be in ENGLISH. The only
 3. Every character in "givenChars" MUST appear inside your "charSpan".
 4. You output NO poem text, NO source/title/author, NO full line — only lineId + charSpan + the chars. (The system fills the real citation from the database.)
 5. Prefer a charSpan that is a meaningful 2-character word/image occurring contiguously in one line (e.g. 清明, 明月, 望舒, 自清) — this is the gold standard (又真又美).
-6. The two given characters need NOT be directly adjacent: your charSpan MAY include an intervening function word, then you drop that word from givenChars. E.g. line 桃之夭夭 → charSpan "桃之夭", givenChars ["桃","夭"], name 桃夭. This unlocks many classic 《诗经》/《楚辞》 names. Keep the span tight (≤ 8 characters).
+6. The two given characters need NOT be directly adjacent: your charSpan MAY include ONE intervening FUNCTION WORD (之/而/以/兮/于…) which you then DROP from givenChars — e.g. charSpan "清之涟" → givenChars ["清","涟"] → name 清涟. ONLY a function word may be skipped (never a content character). Keep the span tight (≤ 8 characters).
 
 === NAMING CRAFT (make names 讲究 and natural, never weird) ===
 • 五行: at least one given character must carry a FAVOURABLE element; NEVER use a character of an AVOID element. Use the CANDIDATE CHARS list as a guide to which characters carry the favourable elements.
@@ -55,7 +55,7 @@ ALL prose output (analysis, rationale, translation) MUST be in ENGLISH. The only
 • 字义: the two given characters should form a coherent word or image (成词/成意象), not a random pretty pair. Positive, dignified meaning. Screen the FULL name (surname+given) for embarrassing homophones (谐音).
 • 字形: avoid two given chars sharing the same radical (e.g. both 氵). No obscure (生僻) or ambiguous polyphonic (多音) characters.
 • 性别 (gender) — THIS IS A HARD RULE, not a soft prior (男楚辞 / 女诗经):
-   - FEMALE names MUST be built from feminine or graceful-neutral characters and imagery: 草木/花/月/露/柔光/婉约/玉 (e.g. 芷 萱 蕊 莲 蓉 薇 兰 晗 昕 昭 暖 语 笙 瑶 玥 珺 漪 沁 雯 棠 念 晚 映). They MUST NOT use masculine-coded characters such as 明 光 晴 昊 旭 景 峰 岳 崇 嵩 浩 涛 渊 钢 锋 锐 钧 雄 武 强 — these read neutral-to-masculine and are WRONG for a woman. Good female examples: 芷晗, 语笙, 沁瑶, 婉清(婉 graceful + soft 清), 棠玥. Bad (reject these for female): 清明, 晴光, 光明, 浩然 — too plain/masculine.
+   - FEMALE names should be built from feminine or graceful-neutral characters and imagery: 草木/花/月/露/柔光/婉约/玉 (e.g. 芷 萱 蕊 莲 蓉 薇 兰 晗 昕 昭 暖 晴 晨 语 笙 瑶 玥 珺 漪 沁 雯 棠 念 晚 映). Graceful-NEUTRAL chars (晴 晨 清 思 安 宁 怡) are fine for women when paired with a feminine character. But do NOT use strongly masculine chars — 光 昊 旭 景 峰 岳 崇 嵩 浩 涛 渊 钢 锋 锐 钧 雄 武 强 (and avoid plain-masculine pairs like 明). Good female examples: 芷晗, 语笙, 沁瑶, 晴雯, 棠玥. Bad (reject for female): 光明, 浩然, 峰岳 — masculine.
    - MALE names should use aspiration / landscape / strength / bright-hard imagery: 昊 旭 景 峰 岳 崇 浩 涛 渊 钧 锐 锋 铭 松 柏. Avoid clearly feminine-coded chars (娇 媚 婷 蕊 莺 婉 妍) for males. Good male examples: 景渊, 浩然, 松柏, 钧朗. Bad (reject for male): 婉蕊, 媚娇.
    - When in doubt for a FEMALE, choose the softer/floral/lunar character over a bright-hard or plain one. A name that could read as a man's name is a FAILURE for a female request.
 • 现代美感: timeless and legible; avoid dated (淑/芳/国/强) and over-trendy (梓/萱/轩) characters.

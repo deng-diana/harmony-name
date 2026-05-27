@@ -221,7 +221,7 @@ function generateExplanationPoints(
 function analyzeStrength(
   dayMaster: string,
   monthZhi: string,
-  allGans: string[], // 四(或三)天干,含日干本身
+  otherGans: string[], // 除日干外的天干(年/月/[时]) —— 日干本身是被衡量者,不计入帮扶
   zhis: string[] // 四(或三)地支,顺序 年/月/日[/时]
 ) {
   const relations = RELATIONSHIPS[dayMaster as keyof typeof RELATIONSHIPS];
@@ -231,14 +231,14 @@ function analyzeStrength(
 
   // 扶抑法:比「生扶」与「克泄耗」的加权力量。三要素融于其中:
   //   得令 → 月支(index 1)藏干额外加权 ×3(月令权力最大);
-  //   得地 → 其余地支藏干(通根);   得势 → 天干(含日干)。
+  //   得地 → 其余地支藏干(通根);   得势 → 天干(不含日干本身)。
   let support = 0;
   let drain = 0;
   const tally = (el: string, w: number) => {
     if (isSupport(el)) support += w;
     else drain += w;
   };
-  allGans.forEach((g) => tally(GAN_WUXING[g], 1));
+  otherGans.forEach((g) => tally(GAN_WUXING[g], 1));
   zhis.forEach((z, i) => {
     const mult = i === 1 ? 3 : 1; // 月支 = 月令,加权
     (ZHI_HIDE_GAN[z] || []).forEach((hg, idx) =>
@@ -535,7 +535,12 @@ export function calculateBazi(
     weighted[k] = Math.round(weighted[k] * 10) / 10;
   });
 
-  const analysis = analyzeStrength(dayMasterElement, monthZhi, allGans, zhis);
+  // 旺衰只看"帮扶日主的力量",故传【除日干以外】的天干(日干是被衡量的主体,
+  // 不能把自己算作帮自己的比劫)。地支藏干仍全部计入(日支通根照算)。
+  const otherGans = isUnknown
+    ? [yearGan, monthGan]
+    : [yearGan, monthGan, timeGan];
+  const analysis = analyzeStrength(dayMasterElement, monthZhi, otherGans, zhis);
 
   return {
     solarDate: dateString,
