@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { calculateBazi, getBeijingWallClock, getTimezoneOffsetMinutes } from "./bazi";
+import {
+  calculateBazi,
+  getBeijingWallClock,
+  getTimezoneOffsetMinutes,
+  equationOfTimeMinutes,
+  ZHI_HIDE_GAN,
+} from "./bazi";
 
 const ELEMENTS = ["Wood", "Fire", "Earth", "Metal", "Water"];
 
@@ -92,5 +98,68 @@ describe("calculateBazi", () => {
     expect(calculateBazi("1990-06-15", "12:00").recommendedNameLength).toMatch(
       /character/i
     );
+  });
+});
+
+// ── Professional-accuracy regression guards (Phase 0) ──────────────────────
+
+describe("立春 year boundary (year pillar changes at Start of Spring, not Jan 1)", () => {
+  it("2024 is 甲辰 only AFTER 立春 (Feb 4)", () => {
+    // 立春 2024 ≈ Feb 4. Before it the year is still 癸卯.
+    expect(calculateBazi("2024-02-03", "12:00").bazi.year).toBe("癸卯");
+    expect(calculateBazi("2024-02-05", "12:00").bazi.year).toBe("甲辰");
+  });
+  it("1984 (start of a new 60-cycle) is 甲子 only after 立春", () => {
+    expect(calculateBazi("1984-02-02", "12:00").bazi.year).toBe("癸亥");
+    expect(calculateBazi("1984-02-05", "12:00").bazi.year).toBe("甲子");
+  });
+});
+
+describe("day pillar (60甲子) and 子时", () => {
+  const city = { longitude: 120, timezone: "Asia/Shanghai" }; // 2000: no DST
+  it("advances one step between consecutive days", () => {
+    expect(calculateBazi("2000-06-14", "12:00", city).bazi.day).toBe("癸卯");
+    expect(calculateBazi("2000-06-15", "12:00", city).bazi.day).toBe("甲辰");
+  });
+  it("子时 (00:00) yields a 子 hour branch", () => {
+    expect(calculateBazi("2000-06-14", "00:00", city).bazi.hour.endsWith("子")).toBe(
+      true
+    );
+  });
+});
+
+describe("真太阳时 (true solar time)", () => {
+  it("equation of time hits its known extremes (≈ −14 mid-Feb, ≈ +16 early-Nov)", () => {
+    expect(equationOfTimeMinutes(2024, 2, 12)).toBeLessThan(-10);
+    expect(equationOfTimeMinutes(2024, 11, 3)).toBeGreaterThan(14);
+  });
+  it("a far-west longitude shifts the hour pillar vs the 120° meridian", () => {
+    // Kashgar ≈ 75.9°E → ~−176 min; a noon birth lands in an earlier 时辰.
+    const kashgar = { longitude: 75.9, timezone: "Asia/Shanghai" };
+    const std = { longitude: 120, timezone: "Asia/Shanghai" };
+    const west = calculateBazi("2000-06-14", "12:00", kashgar).bazi.hour;
+    const east = calculateBazi("2000-06-14", "12:00", std).bazi.hour;
+    expect(west).not.toBe(east);
+  });
+});
+
+describe("地支藏干 + weighted five elements", () => {
+  it("hidden-stem table is correct (寅 = 甲丙戊, 子 = 癸)", () => {
+    expect(ZHI_HIDE_GAN["寅"]).toEqual(["甲", "丙", "戊"]);
+    expect(ZHI_HIDE_GAN["子"]).toEqual(["癸"]);
+  });
+  it("exposes a weighted distribution that includes hidden stems", () => {
+    const r = calculateBazi("2000-06-14", "12:00", {
+      longitude: 120,
+      timezone: "Asia/Shanghai",
+    });
+    expect(r.wuxingWeighted).toBeDefined();
+    const w = r.wuxingWeighted!;
+    const sum = w.gold + w.wood + w.water + w.fire + w.earth;
+    // 4 stems ×1.0 + hidden stems (本气1.0/中气0.5/余气0.3) > the 8 visible-char integer count
+    expect(sum).toBeGreaterThan(8);
+    // integer counts unchanged (one per visible char)
+    const i = r.wuxing;
+    expect(i.gold + i.wood + i.water + i.fire + i.earth).toBe(8);
   });
 });

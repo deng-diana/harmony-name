@@ -44,6 +44,27 @@ const ZHI_WUXING: Record<string, string> = {
   未: "Earth",
 };
 
+// 地支藏干(本气, 中气, 余气)。每个地支其实"藏"着 1~3 个天干,
+// 例如 寅 藏 甲(木)丙(火)戊(土) —— 只按本气把寅当纯木,五行统计就失真。
+// 旺衰/喜用神必须计入藏干才专业。表与 lunar-javascript 内置 ZHI_HIDE_GAN 一致。
+export const ZHI_HIDE_GAN: Record<string, string[]> = {
+  子: ["癸"],
+  丑: ["己", "癸", "辛"],
+  寅: ["甲", "丙", "戊"],
+  卯: ["乙"],
+  辰: ["戊", "乙", "癸"],
+  巳: ["丙", "庚", "戊"],
+  午: ["丁", "己"],
+  未: ["己", "丁", "乙"],
+  申: ["庚", "壬", "戊"],
+  酉: ["辛"],
+  戌: ["戊", "辛", "丁"],
+  亥: ["壬", "甲"],
+};
+
+// 藏干权重:本气 1.0、中气 0.5、余气 0.3(主流取值,集中在常量便于调参)。
+const HIDE_GAN_WEIGHTS = [1.0, 0.5, 0.3];
+
 const MONTH_ZHI_SEASON: Record<string, string> = {
   寅: "Spring",
   卯: "Spring",
@@ -58,16 +79,6 @@ const MONTH_ZHI_SEASON: Record<string, string> = {
   子: "Winter",
   丑: "Winter",
 };
-
-const SEASONAL_BASE_SCORES: Record<string, Record<string, number>> = {
-  Wood: { Spring: 2, Summer: 0, Autumn: -1, Winter: -1 },
-  Fire: { Summer: 2, Spring: -1, Autumn: 0, Winter: -1 },
-  Metal: { Autumn: 2, Winter: 0, Summer: -1, Spring: -1 },
-  Water: { Winter: 2, Spring: 0, Summer: -1, Autumn: -1 },
-  Earth: { Spring: -1, Summer: 0, Autumn: -1, Winter: 0 },
-};
-
-const EARTH_MONTHS = ["辰", "戌", "丑", "未"];
 
 const RELATIONSHIPS = {
   Wood: {
@@ -145,6 +156,16 @@ export interface BaziResult {
     fire: number;
     earth: number;
   };
+  // 内部用:藏干加权的五行分布(更专业,驱动旺衰判断)。不在 UI 展示。
+  wuxingWeighted?: {
+    gold: number;
+    wood: number;
+    water: number;
+    fire: number;
+    earth: number;
+  };
+  // 内部用:各柱地支藏干(按 year/month/day/hour 归类)。
+  hiddenStems?: Record<string, string[]>;
   dayMaster: string;
   strength: string;
   favourableElements: string[];
@@ -194,45 +215,48 @@ function generateExplanationPoints(
   ];
 }
 
+// 扶抑法判旺衰:得令(月令 ~50) + 得地(通根/藏干 ~30) + 得势(透干 ~20) → 0~100。
+// 取代旧的"季节分 + 简单计数",计入地支藏干,是命理主流做法。
+// 注:这是「扶抑」一派;调候/从格 等极端命盘留作后续增强(见计划)。
 function analyzeStrength(
   dayMaster: string,
   monthZhi: string,
-  allElements: string[]
+  allGans: string[], // 四(或三)天干,含日干本身
+  zhis: string[] // 四(或三)地支,顺序 年/月/日[/时]
 ) {
-  const season = MONTH_ZHI_SEASON[monthZhi];
-  let baseScore = 0;
-
-  if (dayMaster === "Earth" && EARTH_MONTHS.includes(monthZhi)) {
-    baseScore = 2;
-  } else {
-    baseScore = SEASONAL_BASE_SCORES[dayMaster]?.[season] ?? 0;
-  }
-
   const relations = RELATIONSHIPS[dayMaster as keyof typeof RELATIONSHIPS];
+  // 生扶 = 印(生我) 或 比劫(同我);其余(官杀/食伤/财)= 克泄耗。
+  const isSupport = (el: string) =>
+    el === dayMaster || el === relations.generatedBy;
 
-  let supportScore = 0;
-  let drainScore = 0;
-
-  allElements.forEach((el) => {
-    if (el === dayMaster) supportScore += 1;
-    else if (el === relations.generatedBy) supportScore += 1;
-    else if (el === relations.controlledBy) drainScore += 1;
-    else if (el === relations.generate) drainScore += 1;
-    else if (el === relations.control) drainScore += 0;
+  // 扶抑法:比「生扶」与「克泄耗」的加权力量。三要素融于其中:
+  //   得令 → 月支(index 1)藏干额外加权 ×3(月令权力最大);
+  //   得地 → 其余地支藏干(通根);   得势 → 天干(含日干)。
+  let support = 0;
+  let drain = 0;
+  const tally = (el: string, w: number) => {
+    if (isSupport(el)) support += w;
+    else drain += w;
+  };
+  allGans.forEach((g) => tally(GAN_WUXING[g], 1));
+  zhis.forEach((z, i) => {
+    const mult = i === 1 ? 3 : 1; // 月支 = 月令,加权
+    (ZHI_HIDE_GAN[z] || []).forEach((hg, idx) =>
+      tally(GAN_WUXING[hg], (HIDE_GAN_WEIGHTS[idx] ?? 0.3) * mult)
+    );
   });
-
-  if (supportScore > 0) supportScore -= 1;
-
-  const finalScore = baseScore + supportScore - drainScore;
+  void monthZhi; // 月令权重已通过 zhis[1] 处理
+  // 生扶占比。注:命理上「克泄耗」有官杀/食伤/财三类、「生扶」仅印/比劫两类,
+  // 故中性点天然偏低(经验约 0.35)而非 0.5。阈值据此标定(可调启发式,非唯一真理)。
+  const ratio = support / (support + drain || 1); // 0~1
 
   let strength = "Balanced";
   let nameLength = "2 or 3 characters";
-
-  if (finalScore >= 2) {
+  if (ratio >= 0.5) {
+    // 我方(印+比劫)≥ 异党 → 身强
     strength = "Strong";
     nameLength = "2 characters (Surname + 1 Name)";
-  }
-  if (finalScore <= -1) {
+  } else if (ratio < 0.35) {
     strength = "Weak";
     nameLength = "3 characters (Surname + 2 Names)";
   }
@@ -308,22 +332,41 @@ export function getTimezoneOffsetMinutes(timeZone: string, at: Date): number {
   }
 }
 
-// 🧠 核心:真太阳时 (Local True Solar Time) —— 用于确定"时柱"(Hour Pillar)
-// 经度每偏离标准经线 1°,真太阳时差 4 分钟。
-function calculateTrueSolarTime(
-  date: Date,
-  hour: number,
-  longitude: number,
-  timezone: string
-): Date {
-  const timezoneOffsetMins = getTimezoneOffsetMinutes(timezone, date);
-  const standardMeridian = (timezoneOffsetMins / 60) * 15;
-  const correctionMins = (longitude - standardMeridian) * 4;
+// 均时差 (Equation of Time):真太阳时与平太阳时之差,随日期在约 −14 ~ +16 分钟间变化。
+// 成因:地球椭圆轨道 + 黄赤交角。用 Spencer/NOAA 简化式(精度 ±2~3 分钟,远小于一个时辰 120 分钟)。
+// 旧代码只做了经度校正、漏了均时差 —— 这是接近时辰边界时算错时柱的根因之一。
+export function equationOfTimeMinutes(
+  year: number,
+  month: number,
+  day: number
+): number {
+  // 当年第几天 N(1..365/366)
+  const N = Math.floor(
+    (Date.UTC(year, month - 1, day) - Date.UTC(year, 0, 0)) / 86400000
+  );
+  const B = ((360 * (N - 81)) / 364) * (Math.PI / 180); // 角度→弧度
+  return 9.87 * Math.sin(2 * B) - 7.53 * Math.cos(B) - 1.5 * Math.sin(B);
+}
 
-  const adjustedDate = new Date(date);
-  adjustedDate.setHours(hour);
-  adjustedDate.setMinutes(adjustedDate.getMinutes() + correctionMins);
-  return adjustedDate;
+// 🧠 核心:真太阳时 (Local Apparent Solar Time) —— 用于定"日柱 + 时柱"。
+// 中国全境统一用北京时(东经 120°)。真太阳时 = 北京墙钟 + 经度时差 + 均时差。
+//   经度时差 = (当地经度 − 120) × 4 分钟;   均时差见 equationOfTimeMinutes。
+// 返回校正后的"真太阳墙钟"{年月日时分},可能跨越子夜 —— 那正是判定早/晚子时归哪天的依据。
+function trueSolarWallClock(
+  bj: { year: number; month: number; day: number; hour: number; minute: number },
+  longitude: number
+): { year: number; month: number; day: number; hour: number; minute: number } {
+  const eot = equationOfTimeMinutes(bj.year, bj.month, bj.day);
+  const correctionMin = (longitude - 120) * 4 + eot;
+  const bjMs = Date.UTC(bj.year, bj.month - 1, bj.day, bj.hour, bj.minute, 0);
+  const ts = new Date(bjMs + correctionMin * 60000);
+  return {
+    year: ts.getUTCFullYear(),
+    month: ts.getUTCMonth() + 1,
+    day: ts.getUTCDate(),
+    hour: ts.getUTCHours(),
+    minute: ts.getUTCMinutes(),
+  };
 }
 
 // 🧠 核心:把"出生地墙上时间"换算成"北京时间(UTC+8)墙上时间",用于按节气定年/月柱。
@@ -349,13 +392,17 @@ export function getBeijingWallClock(
   };
 }
 
+// lunar-javascript 默认 sect=2(晚子时 23:00–24:00 归当日,主流惯例),但其类型未声明 setSect。
+// 显式锁定 sect 2,以防库默认值变更;用可选调用保证类型安全。
+function pinSect2(ec: unknown): void {
+  (ec as { setSect?: (n: number) => void }).setSect?.(2);
+}
+
 export function calculateBazi(
   dateString: string,
   timeString: string,
   city?: { longitude: number; timezone: string }
 ): BaziResult {
-  const date = new Date(dateString);
-
   // 安全地解析时间字符串
   // 处理 "unknown"、空值、以及无效格式的情况
   let isUnknown = timeString === "unknown" || !timeString;
@@ -382,116 +429,113 @@ export function calculateBazi(
     }
   }
 
-  // --- 1. 计算主要八字 (年/月/日) ---
-  // 规则：使用“北京时间”来查节气，确定年和月
-  let solarForPillars = Solar.fromYmdHms(
-    date.getFullYear(),
-    date.getMonth() + 1,
-    date.getDate(),
-    hour,
-    0,
-    0
-  );
+  // --- 1. 排四柱 ---
+  // 主流(寿星万年历)惯例:
+  //   年柱/月柱 —— 按节气,用"北京时间"(lunar-javascript 的节气基于北京时)。
+  //   日柱/时柱 —— 按"真太阳时"(出生地经度 + 均时差校正)。
+  // 无城市/时辰未知时退回朴素本地解析(不做真太阳时校正)。
+  const [fy, fmo, fd] = dateString.split("-").map(Number);
 
-  if (city && !isUnknown) {
-    // 把出生地当地时间换算成北京时间,再按节气定年/月柱
-    const bj = getBeijingWallClock(dateString, hour, city.timezone);
-    solarForPillars = Solar.fromYmdHms(
-      bj.year,
-      bj.month,
-      bj.day,
-      bj.hour,
-      bj.minute,
-      0
-    );
-  }
-
-  const lunarPillars = solarForPillars.getLunar();
-  const baZiPillars = lunarPillars.getEightChar();
-
-  const yearGan = baZiPillars.getYearGan();
-  const yearZhi = baZiPillars.getYearZhi();
-  const monthGan = baZiPillars.getMonthGan();
-  const monthZhi = baZiPillars.getMonthZhi();
-  // 日柱通常随北京时间走，但在跨越子夜时有争议。
-  // 既然 lunar-javascript 是按北京时间排盘的，我们就统一用北京时间取前三柱。
-  const dayGan = baZiPillars.getDayGan();
-  const dayZhi = baZiPillars.getDayZhi();
-
-  // --- 2. 计算时柱 (Hour Pillar) ---
-  // 规则：使用“真太阳时”来确定时辰
-  let timeGanStr = "Unknown";
-  let timeZhiStr = "";
+  let yearGan: string,
+    yearZhi: string,
+    monthGan: string,
+    monthZhi: string,
+    dayGan: string,
+    dayZhi: string;
   let timeGan = "";
   let timeZhi = "";
 
-  if (!isUnknown) {
-    let hourForCalc = hour;
+  if (city && !isUnknown) {
+    // 北京墙钟 → 年/月柱(节气)
+    const bj = getBeijingWallClock(dateString, hour, city.timezone);
+    const bjEC = Solar.fromYmdHms(bj.year, bj.month, bj.day, bj.hour, bj.minute, 0)
+      .getLunar()
+      .getEightChar();
+    pinSect2(bjEC); // 主流:晚子时(23:00–24:00)归当日
+    yearGan = bjEC.getYearGan();
+    yearZhi = bjEC.getYearZhi();
+    monthGan = bjEC.getMonthGan();
+    monthZhi = bjEC.getMonthZhi();
 
-    if (city) {
-      const trueSolarDate = calculateTrueSolarTime(
-        date,
-        hour,
-        city.longitude,
-        city.timezone
-      );
-      hourForCalc = trueSolarDate.getHours();
+    // 真太阳墙钟 → 日/时柱(可能跨子夜,由库按 sect 2 决定换日 + 五鼠遁定时干)
+    const ts = trueSolarWallClock(bj, city.longitude);
+    const tsEC = Solar.fromYmdHms(ts.year, ts.month, ts.day, ts.hour, ts.minute, 0)
+      .getLunar()
+      .getEightChar();
+    pinSect2(tsEC);
+    dayGan = tsEC.getDayGan();
+    dayZhi = tsEC.getDayZhi();
+    timeGan = tsEC.getTimeGan();
+    timeZhi = tsEC.getTimeZhi();
+  } else {
+    // 退路 / 时辰未知:用原始日期(未知时辰按正午,避免子时换日歧义),不做真太阳时校正。
+    const ec = Solar.fromYmdHms(fy, fmo || 1, fd || 1, hour, 0, 0)
+      .getLunar()
+      .getEightChar();
+    pinSect2(ec);
+    yearGan = ec.getYearGan();
+    yearZhi = ec.getYearZhi();
+    monthGan = ec.getMonthGan();
+    monthZhi = ec.getMonthZhi();
+    dayGan = ec.getDayGan();
+    dayZhi = ec.getDayZhi();
+    if (!isUnknown) {
+      timeGan = ec.getTimeGan();
+      timeZhi = ec.getTimeZhi();
     }
-
-    // 这里有个技巧：我们需要用“真太阳时”造一个临时的 Solar 对象，只为了取时柱
-    // 但是时干(Time Stem) 是由 日干(Day Stem) 决定的 (五鼠遁)。
-    // 所以我们必须保证这个临时对象的“日干”和上面算出来的主日干一致。
-    // 最简单的办法：直接查表 (五鼠遁)，或者用库的逻辑。
-
-    // 我们用库的逻辑：造一个临时对象，日期用上面的 solarForPillars 的日期，时间用真太阳时
-    // 这样能保证日干一致，从而推导出正确的时干。
-    const solarForHour = Solar.fromYmdHms(
-      solarForPillars.getYear(),
-      solarForPillars.getMonth(),
-      solarForPillars.getDay(),
-      hourForCalc,
-      0,
-      0
-    );
-    const baZiHour = solarForHour.getLunar().getEightChar();
-
-    timeGan = baZiHour.getTimeGan();
-    timeZhi = baZiHour.getTimeZhi();
-    timeGanStr = timeGan;
-    timeZhiStr = timeZhi;
   }
 
+  const timeGanStr = isUnknown ? "Unknown" : timeGan;
+  const timeZhiStr = isUnknown ? "" : timeZhi;
   const dayMasterElement = GAN_WUXING[dayGan];
 
-  const charList = [
-    { char: yearGan, type: "gan" },
-    { char: yearZhi, type: "zhi" },
-    { char: monthGan, type: "gan" },
-    { char: monthZhi, type: "zhi" },
-    { char: dayGan, type: "gan" },
-    { char: dayZhi, type: "zhi" },
-  ];
-
-  if (!isUnknown) {
-    charList.push({ char: timeGan, type: "gan" });
-    charList.push({ char: timeZhi, type: "zhi" });
-  }
-
+  // --- 2. 五行统计 ---
+  // (a) wuxing 整数计数:每个"可见字"(天干 + 地支本气)算 1 —— 供五行图/历史测试,口径不变。
+  // (b) wuxingWeighted 加权分布:天干 1.0 + 地支藏干(本气1.0/中气0.5/余气0.3) —— 更专业,内部驱动旺衰。
+  const ELEM_KEY: Record<string, keyof BaziResult["wuxing"]> = {
+    Metal: "gold",
+    Wood: "wood",
+    Water: "water",
+    Fire: "fire",
+    Earth: "earth",
+  };
   const counts = { gold: 0, wood: 0, water: 0, fire: 0, earth: 0 };
-  const allElementsStr: string[] = [];
+  const weighted = { gold: 0, wood: 0, water: 0, fire: 0, earth: 0 };
 
-  charList.forEach((item) => {
-    const wx =
-      item.type === "gan" ? GAN_WUXING[item.char] : ZHI_WUXING[item.char];
-    allElementsStr.push(wx);
-    if (wx === "Metal") counts.gold++;
-    if (wx === "Wood") counts.wood++;
-    if (wx === "Water") counts.water++;
-    if (wx === "Fire") counts.fire++;
-    if (wx === "Earth") counts.earth++;
+  const zhis = isUnknown
+    ? [yearZhi, monthZhi, dayZhi]
+    : [yearZhi, monthZhi, dayZhi, timeZhi];
+  const allGans = isUnknown
+    ? [yearGan, monthGan, dayGan]
+    : [yearGan, monthGan, dayGan, timeGan];
+  const pillarNames = isUnknown
+    ? ["year", "month", "day"]
+    : ["year", "month", "day", "hour"];
+
+  // 天干:整数 +1,加权 +1.0
+  allGans.forEach((g) => {
+    const wx = GAN_WUXING[g];
+    counts[ELEM_KEY[wx]]++;
+    weighted[ELEM_KEY[wx]] += 1.0;
+  });
+  // 地支:本气进整数计数;全部藏干按权重进加权分布
+  const hiddenStems: Record<string, string[]> = {};
+  zhis.forEach((z, i) => {
+    const mainWx = ZHI_WUXING[z];
+    counts[ELEM_KEY[mainWx]]++;
+    const hidden = ZHI_HIDE_GAN[z] || [];
+    hiddenStems[pillarNames[i]] = hidden;
+    hidden.forEach((hg, idx) => {
+      const wx = GAN_WUXING[hg];
+      weighted[ELEM_KEY[wx]] += HIDE_GAN_WEIGHTS[idx] ?? 0.3;
+    });
+  });
+  // 四舍五入到 1 位小数,去掉浮点噪声
+  (Object.keys(weighted) as (keyof typeof weighted)[]).forEach((k) => {
+    weighted[k] = Math.round(weighted[k] * 10) / 10;
   });
 
-  const analysis = analyzeStrength(dayMasterElement, monthZhi, allElementsStr);
+  const analysis = analyzeStrength(dayMasterElement, monthZhi, allGans, zhis);
 
   return {
     solarDate: dateString,
@@ -502,6 +546,8 @@ export function calculateBazi(
       hour: isUnknown ? "Unknown" : `${timeGanStr}${timeZhiStr}`,
     },
     wuxing: counts,
+    wuxingWeighted: weighted,
+    hiddenStems,
     dayMaster: dayMasterElement,
     strength: analysis.strength,
     favourableElements: analysis.favourable,
