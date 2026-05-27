@@ -4,6 +4,8 @@ import {
   elementOfChar,
   isHardBlacklisted,
   isGenderForbidden,
+  isGenderClashing,
+  genderLeanOf,
   isUsableInName,
   candidateCharsFor,
   charsOfElement,
@@ -41,11 +43,71 @@ describe("字库 element classification", () => {
 });
 
 describe("字库 coverage (must not over-restrict naming)", () => {
-  it("each element offers ≥30 usable candidates for both genders", () => {
+  // Threshold lowered from 30 → 20 deliberately: candidateCharsFor now EXCLUDES
+  // clearly opposite-gender-lean chars (positive gender bias). Earth/Fire/Metal are
+  // intrinsically masculine/neutral, so the female pool per element shrinks — but
+  // stays ≥20 usable, which is ample for the composer (it only needs a handful).
+  it("each element offers ≥20 usable candidates for both genders", () => {
     for (const el of ELEMENT_KEYS) {
-      expect(candidateCharsFor([el], "male").length).toBeGreaterThanOrEqual(30);
-      expect(candidateCharsFor([el], "female").length).toBeGreaterThanOrEqual(30);
+      expect(candidateCharsFor([el], "male").length).toBeGreaterThanOrEqual(20);
+      expect(candidateCharsFor([el], "female").length).toBeGreaterThanOrEqual(20);
     }
+  });
+});
+
+describe("gender lean classification", () => {
+  it("tags masculine / feminine / neutral correctly", () => {
+    expect(genderLeanOf("峰")).toBe("masculine");
+    expect(genderLeanOf("浩")).toBe("masculine");
+    expect(genderLeanOf("芷")).toBe("feminine");
+    expect(genderLeanOf("瑶")).toBe("feminine");
+    expect(genderLeanOf("清")).toBe("neutral"); // neutral-masculine, but not tagged → stays neutral
+  });
+
+  it("masculine and feminine lean sets are mutually exclusive", () => {
+    for (const el of ELEMENT_KEYS) {
+      for (const c of charsOfElement(el)) {
+        const lean = genderLeanOf(c);
+        if (lean === "masculine") expect(isGenderClashing(c, "female")).toBe(true);
+        if (lean === "feminine") expect(isGenderClashing(c, "male")).toBe(true);
+      }
+    }
+  });
+
+  it("isGenderClashing: female rejects masculine-lean, male rejects feminine-lean", () => {
+    expect(isGenderClashing("峰", "female")).toBe(true);
+    expect(isGenderClashing("峰", "male")).toBe(false);
+    expect(isGenderClashing("芷", "male")).toBe(true);
+    expect(isGenderClashing("芷", "female")).toBe(false);
+    expect(isGenderClashing("清", "female")).toBe(false); // neutral never clashes
+  });
+});
+
+describe("candidateCharsFor gender bias", () => {
+  it("excludes clearly masculine-lean chars from a female pool", () => {
+    const fem = candidateCharsFor(["Fire", "Water"], "female");
+    expect(fem).not.toContain("浩"); // masculine water
+    expect(fem).not.toContain("景"); // masculine fire
+    expect(fem).not.toContain("旭"); // masculine fire
+  });
+
+  it("excludes clearly feminine-lean chars from a male pool", () => {
+    const male = candidateCharsFor(["Wood", "Metal"], "male");
+    expect(male).not.toContain("蕊"); // feminine wood
+    expect(male).not.toContain("瑶"); // feminine metal
+  });
+
+  it("orders same-gender-lean chars before neutral chars (positive bias)", () => {
+    const fem = candidateCharsFor(["Water"], "female");
+    const idxFeminine = fem.indexOf("漪"); // feminine-lean water
+    const idxNeutral = fem.indexOf("清"); // neutral water
+    expect(idxFeminine).toBeGreaterThanOrEqual(0);
+    expect(idxNeutral).toBeGreaterThanOrEqual(0);
+    expect(idxFeminine).toBeLessThan(idxNeutral);
+  });
+
+  it("still returns chars (no gender) without crashing", () => {
+    expect(candidateCharsFor(["Wood"]).length).toBeGreaterThan(0);
   });
 });
 

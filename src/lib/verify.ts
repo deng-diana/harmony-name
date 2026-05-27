@@ -15,6 +15,7 @@ import {
   elementOfChar,
   isHardBlacklisted,
   isGenderForbidden,
+  isGenderClashing,
   pinyinOf,
 } from "./namechars";
 
@@ -76,6 +77,12 @@ export function verifyCandidate(
     if (isHardBlacklisted(ch)) reasons.push(`「${ch}」入诗不入名(黑名单)`);
     if (ctx.gender && isGenderForbidden(ch, ctx.gender)) {
       reasons.push(`「${ch}」不适合${ctx.gender === "male" ? "男" : "女"}名`);
+    }
+    // 性别倾向硬拦截:仅拦【显式标注】明显冲突的字(女名忌 masculineLean,
+    // 男名忌 feminineLean)。中性字(明/光/晴 等)不在此拦 —— 那是评审先生的审美活,
+    // 此处只堵确定性的明显冲突,避免误杀。
+    else if (ctx.gender && isGenderClashing(ch, ctx.gender)) {
+      reasons.push(`「${ch}」性别倾向明显与${ctx.gender === "male" ? "男" : "女"}名相冲`);
     }
   }
 

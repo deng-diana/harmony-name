@@ -47,6 +47,31 @@ const genderForbidden = (
 const MALE_FORBIDDEN = new Set(genderForbidden.male);
 const FEMALE_FORBIDDEN = new Set(genderForbidden.female);
 
+// 性别倾向(positive signal,见 name-chars.json _genderLean)。两表互斥;
+// 未列入者为中性。女名排除 masculineLean、男名排除 feminineLean,其余按
+// 同性别 > 中性 排序 —— 给取名先生一个真正"偏向"的候选字池,而非仅靠硬黑名单。
+const MASCULINE_LEAN = new Set<string>(
+  ((nameCharsData as Record<string, unknown>).masculineLean as string[]) ?? []
+);
+const FEMININE_LEAN = new Set<string>(
+  ((nameCharsData as Record<string, unknown>).feminineLean as string[]) ?? []
+);
+
+/** 该字的性别倾向(显式列表;未列入者为 neutral)。 */
+export function genderLeanOf(c: string): "masculine" | "feminine" | "neutral" {
+  if (MASCULINE_LEAN.has(c)) return "masculine";
+  if (FEMININE_LEAN.has(c)) return "feminine";
+  return "neutral";
+}
+
+/**
+ * 该字是否明显与目标性别冲突(用于 candidateCharsFor 排除 + verify 软提示)。
+ * 女名忌 masculineLean,男名忌 feminineLean。中性字不冲突。
+ */
+export function isGenderClashing(c: string, gender: "male" | "female"): boolean {
+  return gender === "male" ? FEMININE_LEAN.has(c) : MASCULINE_LEAN.has(c);
+}
+
 export function elementOfChar(c: string): ElementEN | undefined {
   return charToElement.get(c);
 }
@@ -66,18 +91,36 @@ export function isUsableInName(c: string, gender?: "male" | "female"): boolean {
   return true;
 }
 
-/** 喜用神(若干五行) × 性别 → 去重后的候选字。 */
+/**
+ * 喜用神(若干五行) × 性别 → 去重后的候选字,【按性别正向偏置】。
+ *
+ * 仅靠硬黑名单(genderForbidden)不足以避免中性/偏阳字流入女名(如 明/光/晴),
+ * 故这里:① 排除明显冲突性别倾向的字(女名去 masculineLean,男名去 feminineLean);
+ *        ② 把同性别倾向字排在中性字之前 —— 取名先生优先取列表靠前的字。
+ * 不传 gender 时退化为原行为(全量、不排序)。
+ */
 export function candidateCharsFor(
   elements: string[],
   gender?: "male" | "female"
 ): string[] {
-  const out: string[] = [];
+  const preferred: string[] = []; // 同性别倾向字(女→feminineLean,男→masculineLean)
+  const neutral: string[] = []; // 中性字(两表都不在)
+  const seen = new Set<string>();
   for (const el of elements) {
     for (const c of elementChars[el as ElementEN] ?? []) {
-      if (isUsableInName(c, gender)) out.push(c);
+      if (seen.has(c)) continue;
+      if (!isUsableInName(c, gender)) continue;
+      if (gender && isGenderClashing(c, gender)) continue; // 排除明显冲突倾向
+      seen.add(c);
+      const lean = genderLeanOf(c);
+      const sameLean =
+        (gender === "female" && lean === "feminine") ||
+        (gender === "male" && lean === "masculine");
+      if (sameLean) preferred.push(c);
+      else neutral.push(c);
     }
   }
-  return [...new Set(out)];
+  return [...preferred, ...neutral];
 }
 
 export function charsOfElement(el: ElementEN): string[] {

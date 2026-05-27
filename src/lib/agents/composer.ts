@@ -54,7 +54,10 @@ ALL prose output (analysis, rationale, translation) MUST be in ENGLISH. The only
 • 音律 (phonetics): the surname + given name must have tonal rise-and-fall — NOT all the same tone. Adjacent characters must have DIFFERENT initials (声母); avoid sharing the same final (韵母). Read the full name aloud — it must flow.
 • 字义: the two given characters should form a coherent word or image (成词/成意象), not a random pretty pair. Positive, dignified meaning. Screen the FULL name (surname+given) for embarrassing homophones (谐音).
 • 字形: avoid two given chars sharing the same radical (e.g. both 氵). No obscure (生僻) or ambiguous polyphonic (多音) characters.
-• 性别 (gender) + tradition 男楚辞/女诗经 as a soft prior: male → aspiration/landscape/virtue; female → grace/botanical/light. Never use a character that clashes with the stated gender.
+• 性别 (gender) — THIS IS A HARD RULE, not a soft prior (男楚辞 / 女诗经):
+   - FEMALE names MUST be built from feminine or graceful-neutral characters and imagery: 草木/花/月/露/柔光/婉约/玉 (e.g. 芷 萱 蕊 莲 蓉 薇 兰 晗 昕 昭 暖 语 笙 瑶 玥 珺 漪 沁 雯 棠 念 晚 映). They MUST NOT use masculine-coded characters such as 明 光 晴 昊 旭 景 峰 岳 崇 嵩 浩 涛 渊 钢 锋 锐 钧 雄 武 强 — these read neutral-to-masculine and are WRONG for a woman. Good female examples: 芷晗, 语笙, 沁瑶, 婉清(婉 graceful + soft 清), 棠玥. Bad (reject these for female): 清明, 晴光, 光明, 浩然 — too plain/masculine.
+   - MALE names should use aspiration / landscape / strength / bright-hard imagery: 昊 旭 景 峰 岳 崇 浩 涛 渊 钧 锐 锋 铭 松 柏. Avoid clearly feminine-coded chars (娇 媚 婷 蕊 莺 婉 妍) for males. Good male examples: 景渊, 浩然, 松柏, 钧朗. Bad (reject for male): 婉蕊, 媚娇.
+   - When in doubt for a FEMALE, choose the softer/floral/lunar character over a bright-hard or plain one. A name that could read as a man's name is a FAILURE for a female request.
 • 现代美感: timeless and legible; avoid dated (淑/芳/国/强) and over-trendy (梓/萱/轩) characters.
 • 入诗不入名: NEVER use function words / particles that merely scan in a poem (之, 乎, 者, 也, 兮, 矣, 焉, 其, 而, 谁, 莫 …) or inauspicious characters, even if they appear in a pool line.
 

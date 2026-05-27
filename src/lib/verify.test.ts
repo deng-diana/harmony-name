@@ -106,6 +106,24 @@ describe("verifyCandidate", () => {
     expect(r.reasons.join()).toMatch(/过长/);
   });
 
+  it("rejects a masculine-coded char in a FEMALE name (郓明: 明 is masculine-lean)", () => {
+    const r = verifyCandidate(
+      { lineId: 1, charSpan: "清明", surnameChar: "郓", givenChars: ["清", "明"] },
+      ctx({ gender: "female" })
+    );
+    expect(r.ok).toBe(false);
+    expect(r.reasons.join()).toMatch(/性别倾向明显与女名相冲/);
+  });
+
+  it("does NOT reject the same masculine-coded char in a MALE name (郓明 ok for male)", () => {
+    const r = verifyCandidate(
+      { lineId: 1, charSpan: "清明", surnameChar: "郓", givenChars: ["清", "明"] },
+      ctx({ gender: "male" }) // 明 is masculine-lean → fine for males
+    );
+    // 明 is Fire (favourable here), 清 Water (favourable); no clash for male
+    expect(r.reasons.join()).not.toMatch(/性别倾向/);
+  });
+
   it("does NOT reject a common surname that happens to be on the blacklist (王/何/莫)", () => {
     // 王 is in the overweening list as a GIVEN char, but it's the most common surname.
     const r = verifyCandidate(
