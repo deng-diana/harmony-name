@@ -60,7 +60,7 @@ export async function runNamingPipeline(
   const imageryQuery =
     "中国古典诗词 " +
     input.favourableElements.map((e) => ELEMENT_IMAGERY[e] || e).join(" ");
-  const pool = await buildVerifiedPool({
+  let pool = await buildVerifiedPool({
     favourableChars: candidateChars,
     imageryQuery,
   });
@@ -76,7 +76,7 @@ export async function runNamingPipeline(
     surnameInstruction: input.surnameInstruction,
     candidateChars,
   };
-  const ctx: VerifyContext = {
+  let ctx: VerifyContext = {
     pool,
     favourableElements: input.favourableElements,
     avoidElements: input.avoidElements,
@@ -105,6 +105,33 @@ export async function runNamingPipeline(
     const retry = await runComposer(profile, pool, failed);
     if (!analysis) analysis = retry.analysis;
     verified = dedupe([...verified, ...passing(retry.candidates, ctx)]);
+  }
+
+  // ③.5 兜底:重生成后仍 <3 → 拓宽检索(更多候选字×更多真句)+ 允许单字名,再生成一轮。
+  // 针对喜用神受限的命盘(如女命忌水木、喜用全偏阳),保证基本能凑满 3 个而不破质量底线。
+  if (verified.length < 3) {
+    onProgress(3, TOTAL, "Broadening the search for more options…");
+    const broader = await buildVerifiedPool({
+      favourableChars: candidateChars,
+      imageryQuery,
+      perArm: 40,
+      cap: 45,
+    });
+    const seen = new Set(pool.map((p) => p.chunkId));
+    pool = [...pool, ...broader.filter((p) => !seen.has(p.chunkId))];
+    ctx = { ...ctx, pool };
+    const broadenFeedback =
+      `Only ${verified.length} valid name(s) so far — the favourable elements are constrained. ` +
+      `Produce SINGLE-character given names: surname + ONE favourable, gender-appropriate character ` +
+      `that appears in a pool line (e.g. 苏瑶, 苏晗, 苏昭). These are abundant and elegant. Give 6.`;
+    // 兜底强制单字名(姓+1):双字名在受限喜用神下语料稀缺,单字名几乎必过。
+    const rescueProfile: ComposerProfile = {
+      ...profile,
+      recommendedNameLength: "2 characters (Surname + 1 Name)",
+    };
+    const rescue = await runComposer(rescueProfile, pool, broadenFeedback);
+    if (!analysis) analysis = rescue.analysis;
+    verified = dedupe([...verified, ...passing(rescue.candidates, ctx)]);
   }
 
   // ④ 评审先生打分排序、挑最自然的 3 个(评审失败则优雅降级用校验顺序)
