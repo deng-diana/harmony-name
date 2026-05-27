@@ -91,4 +91,27 @@ describe("verifyCandidate", () => {
     expect(r.ok).toBe(false);
     expect(r.reasons.join()).toMatch(/声母相同/);
   });
+
+  it("rejects an over-long charSpan (whole long line, not a tight word)", () => {
+    const r = verifyCandidate(
+      {
+        lineId: 1,
+        charSpan: "维师尚父，时维鹰扬。凉彼武王，四伐大商，会朝清明。",
+        surnameChar: "邓",
+        givenChars: ["清", "明"],
+      },
+      ctx()
+    );
+    expect(r.ok).toBe(false);
+    expect(r.reasons.join()).toMatch(/过长/);
+  });
+
+  it("rejects a blacklisted surname (auto-mode safety, 王=overweening)", () => {
+    const r = verifyCandidate(
+      { lineId: 1, charSpan: "清明", surnameChar: "王", givenChars: ["清", "明"] },
+      ctx()
+    );
+    expect(r.ok).toBe(false);
+    expect(r.reasons.join()).toMatch(/姓.*黑名单/);
+  });
 });

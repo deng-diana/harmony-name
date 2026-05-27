@@ -70,12 +70,20 @@ export async function searchPoems(
 
   // Step 1: 把查询文本变成向量
   // "水 木 春天 润泽" → [0.012, -0.034, 0.056, ...] (1536个浮点数)
-  const embeddingResponse = await openai.embeddings.create({
-    model: "text-embedding-3-small",
-    input: query,
-    encoding_format: "float",
-  });
-  const queryVector = embeddingResponse.data[0].embedding;
+  // 包 try/catch:embedding 失败只让"语义检索"这一路降级返回 [],
+  // 不连累并联的"按字检索"(buildVerifiedPool 用 Promise.all)。
+  let queryVector: number[];
+  try {
+    const embeddingResponse = await openai.embeddings.create({
+      model: "text-embedding-3-small",
+      input: query,
+      encoding_format: "float",
+    });
+    queryVector = embeddingResponse.data[0].embedding;
+  } catch (e) {
+    console.error("Embedding 失败:", e instanceof Error ? e.message : e);
+    return [];
+  }
 
   // Step 2: 调用 Supabase RPC — 向量搜索
   //

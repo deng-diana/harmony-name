@@ -41,6 +41,10 @@ export interface VerifyResult {
 const initialOf = (c: string): string =>
   (pinyin(c, { pattern: "initial", type: "string" }) as string) || "";
 
+// charSpan 应是名字字所在的"紧凑片段"(取名于一句之内连用数字),
+// 不能拿整句长诗来"接地"。给名字字数 + 少量余量。
+const MAX_SPAN_LEN = 8;
+
 export function verifyCandidate(
   c: NameCandidate,
   ctx: VerifyContext
@@ -54,6 +58,8 @@ export function verifyCandidate(
   } else {
     if (!c.charSpan || !line.chunkText.includes(c.charSpan)) {
       reasons.push(`charSpan「${c.charSpan}」不是所引诗句的连续片段`);
+    } else if (c.charSpan.length > MAX_SPAN_LEN) {
+      reasons.push(`charSpan「${c.charSpan}」过长(应是名字字所在的紧凑片段,非整句)`);
     }
     for (const ch of c.givenChars) {
       if (!line.chunkText.includes(ch)) {
@@ -64,7 +70,10 @@ export function verifyCandidate(
     }
   }
 
-  // ② 黑名单 / 性别禁用
+  // ② 黑名单 / 性别禁用(名字字 + 姓 —— auto 模式下姓由 LLM 给出,也要拦黑名单)
+  if (isHardBlacklisted(c.surnameChar)) {
+    reasons.push(`姓「${c.surnameChar}」属黑名单字`);
+  }
   for (const ch of c.givenChars) {
     if (isHardBlacklisted(ch)) reasons.push(`「${ch}」入诗不入名(黑名单)`);
     if (ctx.gender && isGenderForbidden(ch, ctx.gender)) {
@@ -85,7 +94,9 @@ export function verifyCandidate(
   // ④ 音律(硬性):全同调 / 相邻声母相同
   const chars = [c.surnameChar, ...c.givenChars];
   const tones = chars.map((ch) => pinyinOf(ch).tone);
-  if (tones.length >= 2 && new Set(tones).size === 1) {
+  const distinctTones = new Set(tones);
+  // 仅当声调全同且是"真声调"(非 0 解析失败/轻声)时才判呆板,避免误杀
+  if (tones.length >= 2 && distinctTones.size === 1 && !distinctTones.has(0)) {
     reasons.push(`声调全同(${tones.join("")}),读来呆板`);
   }
   for (let i = 1; i < chars.length; i++) {
