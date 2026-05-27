@@ -14,6 +14,7 @@ import {
   type ComposerCandidate,
 } from "../agents/composer";
 import { verifyCandidate, type VerifyContext } from "../verify";
+import { runCritic } from "../agents/critic";
 import { candidateCharsFor, elementOfChar, pinyinOf } from "../namechars";
 import { COMMON_SURNAMES } from "../surnames";
 import type { NameOption } from "../../types";
@@ -45,7 +46,7 @@ export interface PipelineResult {
 }
 
 type ProgressFn = (step: number, total: number, message: string) => void;
-const TOTAL = 4;
+const TOTAL = 5;
 
 export async function runNamingPipeline(
   input: PipelineInput,
@@ -106,9 +107,35 @@ export async function runNamingPipeline(
     verified = dedupe([...verified, ...passing(retry.candidates, ctx)]);
   }
 
-  // ④ 回填出处 + 五行/拼音 → NameOption
-  onProgress(4, TOTAL, "Revealing your names…");
-  const names = verified.slice(0, 3).map((c) => hydrate(c, pool));
+  // ④ 评审先生打分排序、挑最自然的 3 个(评审失败则优雅降级用校验顺序)
+  onProgress(4, TOTAL, "The review master is judging…");
+  let ordered = verified;
+  if (verified.length > 1) {
+    try {
+      const rankings = await runCritic(profile, verified, pool);
+      if (rankings.length > 0) {
+        const byIdx = new Map(rankings.map((r) => [r.idx, r]));
+        const sortKey = (i: number) => {
+          const r = byIdx.get(i);
+          return (r?.accept ? 1000 : 0) + (r?.score ?? 0); // 通过者优先,再按分数
+        };
+        ordered = verified
+          .map((c, i) => {
+            const r = byIdx.get(i);
+            if (r?.comment) c.masterComment = r.comment; // 用评审点评覆盖
+            return { c, i };
+          })
+          .sort((a, b) => sortKey(b.i) - sortKey(a.i))
+          .map((x) => x.c);
+      }
+    } catch (e) {
+      console.error("Critic failed, using verify order:", e instanceof Error ? e.message : e);
+    }
+  }
+
+  // ⑤ 回填出处 + 五行/拼音 → NameOption(出处一律来自候选池,非 LLM 文本)
+  onProgress(5, TOTAL, "Revealing your names…");
+  const names = ordered.slice(0, 3).map((c) => hydrate(c, pool));
   return { names, analysis };
 }
 
