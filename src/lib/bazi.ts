@@ -218,10 +218,18 @@ function generateExplanationPoints(
 // 扶抑法判旺衰:得令(月令 ~50) + 得地(通根/藏干 ~30) + 得势(透干 ~20) → 0~100。
 // 取代旧的"季节分 + 简单计数",计入地支藏干,是命理主流做法。
 // 注:这是「扶抑」一派;调候/从格 等极端命盘留作后续增强(见计划)。
+// 阈值(扶抑 ratio):命理"克泄耗"3 类、"生扶"仅 2 类,中性点天然偏低。
+// P2 校准:日干不计帮扶 + 透干增强后,中性点下移到约 0.30。阈值据此调宽 Balanced 带。
+const STRONG_THRESHOLD = 0.45;
+const WEAK_THRESHOLD = 0.3;
+// 透干 (transparent stem):藏干在天干上同时出现 → 该藏干力量显著放大,命理判旺衰要点。
+const TRANSPARENT_BOOST = 1.5;
+
 function analyzeStrength(
   dayMaster: string,
+  dayGan: string, // 日干本身 —— 不计入帮扶但参与透干检测
   monthZhi: string,
-  otherGans: string[], // 除日干外的天干(年/月/[时]) —— 日干本身是被衡量者,不计入帮扶
+  otherGans: string[], // 除日干外的天干(年/月/[时])
   zhis: string[] // 四(或三)地支,顺序 年/月/日[/时]
 ) {
   const relations = RELATIONSHIPS[dayMaster as keyof typeof RELATIONSHIPS];
@@ -231,7 +239,9 @@ function analyzeStrength(
 
   // 扶抑法:比「生扶」与「克泄耗」的加权力量。三要素融于其中:
   //   得令 → 月支(index 1)藏干额外加权 ×3(月令权力最大);
-  //   得地 → 其余地支藏干(通根);   得势 → 天干(不含日干本身)。
+  //   得地 → 其余地支藏干(通根);   得势 → 天干(不含日干本身);
+  //   透干 → 藏干若在天干(含日干)上同现 → 该藏干 ×1.5。
+  const transparentSet = new Set([dayGan, ...otherGans]);
   let support = 0;
   let drain = 0;
   const tally = (el: string, w: number) => {
@@ -241,22 +251,20 @@ function analyzeStrength(
   otherGans.forEach((g) => tally(GAN_WUXING[g], 1));
   zhis.forEach((z, i) => {
     const mult = i === 1 ? 3 : 1; // 月支 = 月令,加权
-    (ZHI_HIDE_GAN[z] || []).forEach((hg, idx) =>
-      tally(GAN_WUXING[hg], (HIDE_GAN_WEIGHTS[idx] ?? 0.3) * mult)
-    );
+    (ZHI_HIDE_GAN[z] || []).forEach((hg, idx) => {
+      let w = (HIDE_GAN_WEIGHTS[idx] ?? 0.3) * mult;
+      if (transparentSet.has(hg)) w *= TRANSPARENT_BOOST;
+      tally(GAN_WUXING[hg], w);
+    });
   });
-  void monthZhi; // 月令权重已通过 zhis[1] 处理
-  // 生扶占比。注:命理上「克泄耗」有官杀/食伤/财三类、「生扶」仅印/比劫两类,
-  // 故中性点天然偏低(经验约 0.35)而非 0.5。阈值据此标定(可调启发式,非唯一真理)。
   const ratio = support / (support + drain || 1); // 0~1
 
   let strength = "Balanced";
   let nameLength = "2 or 3 characters";
-  if (ratio >= 0.5) {
-    // 我方(印+比劫)≥ 异党 → 身强
+  if (ratio >= STRONG_THRESHOLD) {
     strength = "Strong";
     nameLength = "2 characters (Surname + 1 Name)";
-  } else if (ratio < 0.35) {
+  } else if (ratio < WEAK_THRESHOLD) {
     strength = "Weak";
     nameLength = "3 characters (Surname + 2 Names)";
   }
@@ -281,12 +289,19 @@ function analyzeStrength(
 
   // 调候(climatic adjustment, 命理 #1 增强):在扶抑之上叠加气候平衡之神。
   // 主流口径(《穷通宝鉴》):
-  //   冬令(亥子丑)寒 → 火/木/土/金/水(各日主)都喜【火】解寒;
-  //   夏令(巳午未)炎 → 木/土/火/水 喜【水】润;但「夏水须金」(壬癸 met 庚辛为源)。
+  //   冬令(亥子丑)寒 → 五日主皆喜【火】解寒;
+  //   夏令(巳午未)炎 → 木/土/火/水 喜【水】润;但「夏水须金」(壬癸 met 庚辛为源);
+  //   寅月余寒(P2 增强)→ 立春后仍未真暖,五日主皆喜【火】解寒,与冬月同口径。
   // 只补入 favourable(前置),不强行从 avoid 移出 —— 避免 favourable/avoid 自相矛盾;
-  // 下游 prompt 看到冲突时由评审先生权衡。简化主流口径,湿燥细分/从格留后续。
+  // 下游 prompt 看到冲突时由评审先生权衡。月支特定 key 优先于季节 key(寅月走特定)。
   const season = MONTH_ZHI_SEASON[monthZhi];
   const CLIMATIC_BOOST: Record<string, string> = {
+    // 月支特定:寅月余寒 —— 高于季节级,五日主全覆盖
+    Wood_寅: "Fire",
+    Fire_寅: "Fire",
+    Earth_寅: "Fire",
+    Metal_寅: "Fire",
+    Water_寅: "Fire",
     // 冬令(亥子丑)→ 喜火解寒(覆盖五日主)
     Fire_Winter: "Fire",
     Wood_Winter: "Fire",
@@ -300,7 +315,10 @@ function analyzeStrength(
     Metal_Summer: "Water",
     Water_Summer: "Metal", // 夏水须金,而非以水救水(纠正)
   };
-  const boost = CLIMATIC_BOOST[`${dayMaster}_${season}`];
+  // 月支特定优先于季节级
+  const boost =
+    CLIMATIC_BOOST[`${dayMaster}_${monthZhi}`] ??
+    CLIMATIC_BOOST[`${dayMaster}_${season}`];
   if (boost && !favourable.includes(boost)) {
     favourable.unshift(boost); // 前置,标示调候优先
   }
@@ -566,7 +584,13 @@ export function calculateBazi(
   const otherGans = isUnknown
     ? [yearGan, monthGan]
     : [yearGan, monthGan, timeGan];
-  const analysis = analyzeStrength(dayMasterElement, monthZhi, otherGans, zhis);
+  const analysis = analyzeStrength(
+    dayMasterElement,
+    dayGan, // 透干检测要看天干全集(含日干本身)
+    monthZhi,
+    otherGans,
+    zhis
+  );
 
   return {
     solarDate: dateString,

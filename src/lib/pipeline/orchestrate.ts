@@ -15,7 +15,14 @@ import {
 } from "../agents/composer";
 import { verifyCandidate, type VerifyContext } from "../verify";
 import { runCritic } from "../agents/critic";
-import { candidateCharsFor, elementOfChar, pinyinOf } from "../namechars";
+import {
+  candidateCharsFor,
+  elementOfChar,
+  isGenderClashing,
+  isGenderForbidden,
+  isHardBlacklisted,
+  pinyinOf,
+} from "../namechars";
 import { COMMON_SURNAMES } from "../surnames";
 import type { NameOption } from "../../types";
 
@@ -38,6 +45,8 @@ export interface PipelineInput {
   avoidElements: string[];
   recommendedNameLength: string;
   surnameInstruction: string;
+  /** 用户指定的姓字(specified/from_common 模式)—— 让 deterministic 救援能用上 */
+  surnameChar?: string;
 }
 
 export interface PipelineResult {
@@ -134,6 +143,25 @@ export async function runNamingPipeline(
     verified = dedupe([...verified, ...passing(rescue.candidates, ctx)]);
   }
 
+  // ③.6 终极兜底(deterministic):仍 <3 → 纯代码从池子里扫"喜用神+性别合宜"的单字,
+  // 与姓配成 2 字名,无需 LLM,几乎必过校验。点评/寓意用极简模板填充(诚实交代)。
+  // 这是"always-3"的最终保险,只在 LLM 多次随机后仍凑不齐时启动。
+  if (verified.length < 3) {
+    const surnameForRescue =
+      input.surnameChar ||
+      verified[0]?.surnameChar ||
+      first.candidates[0]?.surnameChar ||
+      "";
+    if (surnameForRescue) {
+      const rescued = rescueDeterministic(
+        surnameForRescue,
+        ctx,
+        3 - verified.length
+      );
+      verified = dedupe([...verified, ...rescued]);
+    }
+  }
+
   // ④ 评审先生打分排序、挑最自然的 3 个(评审失败则优雅降级用校验顺序)
   onProgress(4, TOTAL, "The review master is judging…");
   let ordered = verified;
@@ -181,6 +209,54 @@ function dedupe(cands: ComposerCandidate[]): ComposerCandidate[] {
     if (seen.has(key)) continue;
     seen.add(key);
     out.push(c);
+  }
+  return out;
+}
+
+/**
+ * Deterministic 兜底 —— 不调 LLM,纯代码从池子里找"喜用神+性别合宜"的单字,
+ * 与姓配 2 字名(姓+1)。几乎必过校验。点评/寓意用极简模板填,如实标"single-char"风格。
+ * 仅在 LLM 多轮兜底后仍 <3 时启动 —— 保证 always-3。
+ */
+function rescueDeterministic(
+  surnameChar: string,
+  ctx: VerifyContext,
+  needed: number
+): ComposerCandidate[] {
+  if (needed <= 0 || !surnameChar) return [];
+  const out: ComposerCandidate[] = [];
+  const usedChars = new Set<string>();
+
+  for (const line of ctx.pool) {
+    if (out.length >= needed) break;
+    for (const ch of line.chunkText) {
+      if (out.length >= needed) break;
+      if (usedChars.has(ch)) continue;
+      // 必须:在字库内可识别五行 且 属喜用神
+      const el = elementOfChar(ch);
+      if (!el || !ctx.favourableElements.includes(el)) continue;
+      // 排除明显不合:黑名单 / 性别禁用 / 性别倾向冲突
+      if (isHardBlacklisted(ch)) continue;
+      if (ctx.gender && isGenderForbidden(ch, ctx.gender)) continue;
+      if (ctx.gender && isGenderClashing(ch, ctx.gender)) continue;
+      // 与姓不能同字(避免 苏苏 之类)
+      if (ch === surnameChar) continue;
+
+      const candidate: ComposerCandidate = {
+        lineId: line.chunkId,
+        charSpan: ch,
+        surnameChar,
+        givenChars: [ch],
+        meanings: { [ch]: `${el} element` },
+        poeticMeaning: `Drawn from ${line.author}'s 《${line.title}》, this single-character name carries the ${el} essence with quiet classical grace.`,
+        masterComment: `A graceful single-character name (姓+1),verifiably grounded in a real ${line.dynasty}-dynasty line.`,
+      };
+      const r = verifyCandidate(candidate, ctx);
+      if (r.ok) {
+        usedChars.add(ch);
+        out.push(candidate);
+      }
+    }
   }
   return out;
 }

@@ -157,6 +157,11 @@ export async function POST(request: Request) {
             avoidElements,
             recommendedNameLength,
             surnameInstruction,
+            // 用户指定了姓 → 把姓字传进去,让 deterministic 救援能用上
+            surnameChar:
+              surnamePreference === "specified" && specifiedSurname
+                ? specifiedSurname
+                : undefined,
           },
           {
             onProgress: (step, total, message) => {
