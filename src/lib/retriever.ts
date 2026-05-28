@@ -53,13 +53,18 @@ export interface ScoredPoem {
 // 缓存: 喜用神组合有限(就那么几十种),相同 query 必得相同结果。
 // 命中后省掉一次 OpenAI Embedding 调用 + 一次数据库往返 → 更快、更省。
 // 生产用 Upstash KV(跨实例共享、持久);本地无 Upstash 时退回进程内 Map。
+//
+// CACHE_VERSION:ScoredPoem schema 变更时 bump。当前 v2 = chunkId 字段加入后的版本;
+// 旧版 v1 缓存条目缺 chunkId → buildVerifiedPool 会把整组 semantic-arm 结果过滤掉。
+// 任何对 ScoredPoem 形状的破坏性变更都必须 bump 此版本号。
+const CACHE_VERSION = "v2";
 const poemCache = new Map<string, ScoredPoem[]>();
 
 export async function searchPoems(
   query: string,
   topK: number = 10
 ): Promise<ScoredPoem[]> {
-  const cacheKey = `poems:${query}:${topK}`;
+  const cacheKey = `poems:${CACHE_VERSION}:${query}:${topK}`;
   if (redis) {
     const hit = await redis.get<ScoredPoem[]>(cacheKey);
     if (hit) return hit;
@@ -108,8 +113,13 @@ export async function searchPoems(
   }
 
   // Step 3: 格式化返回结果
+  // 注意:PostgREST 把 bigint 字段(chunk_id)序列化为 JS string —— `as number` 是
+  // TS 层面的谎言,运行时仍是 string。必须用 Number() 强转,否则:
+  //   ① buildVerifiedPool 的 `seen.has(chunkId)` 因 string vs number 不去重;
+  //   ② verify.ts 的 `ctx.pool.find(p => p.chunkId === c.lineId)` 严格 === 直接 miss,
+  //      整组 semantic-arm 候选被判"lineId 不在候选池"全军覆没。
   const results: ScoredPoem[] = (data || []).map((row: Record<string, unknown>) => ({
-    chunkId: row.chunk_id as number,
+    chunkId: Number(row.chunk_id),
     chunkText: row.chunk_text as string,
     title: row.poem_title as string,
     author: row.poem_author as string,
@@ -148,7 +158,7 @@ export async function searchLinesByChars(
   const uniq = [...new Set(chars.filter(Boolean))];
   if (uniq.length === 0) return [];
 
-  const cacheKey = `lines:${[...uniq].sort().join("")}:${topK}`;
+  const cacheKey = `lines:${CACHE_VERSION}:${[...uniq].sort().join("")}:${topK}`;
   if (redis) {
     const hit = await redis.get<ScoredPoem[]>(cacheKey);
     if (hit) return hit;

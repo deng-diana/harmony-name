@@ -35,6 +35,7 @@ for (const el of ELEMENT_KEYS) {
 
 // 黑名单
 const hard = (blacklistData as { hard: Record<string, string[]> }).hard;
+const FUNCTION_WORD_SET = new Set<string>(hard.functionWords);
 const HARD_SET = new Set<string>([
   ...hard.functionWords,
   ...hard.inauspicious,
@@ -102,6 +103,11 @@ export function elementOfChar(c: string): ElementEN | undefined {
 
 export function isHardBlacklisted(c: string): boolean {
   return HARD_SET.has(c);
+}
+
+/** 是否为虚词(之乎者也兮…) —— charSpan 跳字白名单专用,严格于 isHardBlacklisted。 */
+export function isFunctionWord(c: string): boolean {
+  return FUNCTION_WORD_SET.has(c);
 }
 
 export function isGenderForbidden(c: string, gender: "male" | "female"): boolean {

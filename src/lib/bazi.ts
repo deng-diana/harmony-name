@@ -292,8 +292,10 @@ function analyzeStrength(
   //   冬令(亥子丑)寒 → 五日主皆喜【火】解寒;
   //   夏令(巳午未)炎 → 木/土/火/水 喜【水】润;但「夏水须金」(壬癸 met 庚辛为源);
   //   寅月余寒(P2 增强)→ 立春后仍未真暖,五日主皆喜【火】解寒,与冬月同口径。
-  // 只补入 favourable(前置),不强行从 avoid 移出 —— 避免 favourable/avoid 自相矛盾;
-  // 下游 prompt 看到冲突时由评审先生权衡。月支特定 key 优先于季节 key(寅月走特定)。
+  // 冲突解决:调候 > 扶抑(对该元素而言)。Strong 日主在匹配季节下,boost 元素可能与
+  // 扶抑得出的 avoid 重叠(如 Strong 壬日午月:扶抑 avoid=[Metal,Water],调候 boost=Metal)。
+  // 此时把 boost 从 avoid 移出 + 推入 favourable,绝不让同一元素既喜又忌(verify.ts 硬拦忌
+  // 神字会自相矛盾地枪毙所有 Metal 候选)。月支特定 key 优先于季节 key(寅月走特定)。
   const season = MONTH_ZHI_SEASON[monthZhi];
   const CLIMATIC_BOOST: Record<string, string> = {
     // 月支特定:寅月余寒 —— 高于季节级,五日主全覆盖
@@ -319,8 +321,12 @@ function analyzeStrength(
   const boost =
     CLIMATIC_BOOST[`${dayMaster}_${monthZhi}`] ??
     CLIMATIC_BOOST[`${dayMaster}_${season}`];
-  if (boost && !favourable.includes(boost)) {
-    favourable.unshift(boost); // 前置,标示调候优先
+  if (boost) {
+    // ① 若与 avoid 冲突,移出 avoid(调候优先于扶抑对该元素的判定)
+    const idx = avoid.indexOf(boost);
+    if (idx !== -1) avoid.splice(idx, 1);
+    // ② 推入 favourable(若不在)
+    if (!favourable.includes(boost)) favourable.unshift(boost);
   }
 
   const favClean = [...new Set(favourable)].filter(Boolean);

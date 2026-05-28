@@ -13,6 +13,7 @@ import type { ScoredPoem } from "./retriever";
 import {
   elementOfChar,
   isHardBlacklisted,
+  isFunctionWord,
   isGenderForbidden,
   isGenderClashing,
   pinyinOf,
@@ -65,11 +66,13 @@ export function verifyCandidate(
         reasons.push(`「${ch}」不在所标 charSpan 内`);
       }
     }
-    // charSpan 内被"跳过"的字(非名字字)只能是虚词(黑名单),否则等于从"窈窕淑女"
-    // 抠出"窈女"、把实字"窕淑"丢掉 —— 不允许跳过实字。
+    // charSpan 内被"跳过"的字(非名字字)只能是【虚词】(之乎者也兮…),否则
+    // 等于从"窈窕淑女"抠出"窈女"、把实字"窕淑"丢掉 —— 不允许跳过实字。
+    // 注意:此处只放行 functionWords,绝不放行 inauspicious/overweening/crude ——
+    // 否则 LLM 可从 "愁绪满怀" 抠出 "绪",把 "愁" 当作"可跳过"塞进引用框。
     if (c.charSpan && line.chunkText.includes(c.charSpan)) {
       for (const ch of c.charSpan) {
-        if (!c.givenChars.includes(ch) && !isHardBlacklisted(ch)) {
+        if (!c.givenChars.includes(ch) && !isFunctionWord(ch)) {
           reasons.push(`charSpan 中夹了实字「${ch}」(只能跳过虚词)`);
         }
       }
