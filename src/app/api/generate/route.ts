@@ -157,9 +157,13 @@ export async function POST(request: Request) {
             avoidElements,
             recommendedNameLength,
             surnameInstruction,
-            // 用户指定了姓 → 把姓字传进去,让 deterministic 救援能用上
+            // 用户指定了姓(specified 直选 / from_common 从常见姓列表挑)→ 把姓字
+            // 传进去,让 deterministic 救援能用上。auto 模式下保持 undefined,让
+            // 取名先生自选,救援层若一无所获再走 FALLBACK_SURNAME 兜底。
             surnameChar:
-              surnamePreference === "specified" && specifiedSurname
+              (surnamePreference === "specified" ||
+                surnamePreference === "from_common") &&
+              specifiedSurname
                 ? specifiedSurname
                 : undefined,
           },
@@ -176,8 +180,7 @@ export async function POST(request: Request) {
             error: "Couldn't compose verified names this time",
             code: "NO_VERIFIED_NAMES",
           });
-          await writer.close();
-          return;
+          return; // writer.close() 走 finally,避免重复 close 触发 TypeError
         }
         parsed = result;
       } else {
@@ -231,8 +234,7 @@ export async function POST(request: Request) {
         const content = textBlock?.text;
         if (!content) {
           await failAndRefund({ error: "AI returned empty content", code: "EMPTY_RESPONSE" });
-          await writer.close();
-          return;
+          return; // writer.close() 走 finally
         }
 
         try {
@@ -243,8 +245,7 @@ export async function POST(request: Request) {
             parsed = JSON.parse(jsonMatch[0]);
           } else {
             await failAndRefund({ error: "AI returned invalid JSON", code: "PARSE_ERROR" });
-            await writer.close();
-            return;
+            return; // writer.close() 走 finally
           }
         }
       }
@@ -275,7 +276,14 @@ export async function POST(request: Request) {
       Sentry.captureException(error); // 上报到 Sentry(我们自己 catch 了,需手动上报)
       await failAndRefund({ error: "Generation failed", code: "API_ERROR" });
     } finally {
-      await writer.close();
+      // 防御:writer 已关闭(客户端断开 / 上面分支提前 return 但 finally 兜底再 close 也无害)
+      // 再 close 一次会 TypeError "Invalid state",必须吞掉 —— 否则 fire-and-forget
+      // IIFE 里逃出去变成 unhandledRejection。
+      try {
+        await writer.close();
+      } catch {
+        /* writer already closed — fine */
+      }
     }
   })();
 

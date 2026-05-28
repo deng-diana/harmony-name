@@ -113,7 +113,7 @@ export async function runNamingPipeline(
       .join("\n");
     const retry = await runComposer(profile, pool, failed);
     if (!analysis) analysis = retry.analysis;
-    verified = dedupe([...verified, ...passing(retry.candidates, ctx)]);
+    verified = dedupe([...verified, ...passing(retry.candidates, ctx)], ctx);
   }
 
   // ③.5 兜底:重生成后仍 <3 → 拓宽检索(更多候选字×更多真句)+ 允许单字名,再生成一轮。
@@ -140,26 +140,31 @@ export async function runNamingPipeline(
     };
     const rescue = await runComposer(rescueProfile, pool, broadenFeedback);
     if (!analysis) analysis = rescue.analysis;
-    verified = dedupe([...verified, ...passing(rescue.candidates, ctx)]);
+    verified = dedupe([...verified, ...passing(rescue.candidates, ctx)], ctx);
   }
 
   // ③.6 终极兜底(deterministic):仍 <3 → 纯代码从池子里扫"喜用神+性别合宜"的单字,
   // 与姓配成 2 字名,无需 LLM,几乎必过校验。点评/寓意用极简模板填充(诚实交代)。
   // 这是"always-3"的最终保险,只在 LLM 多次随机后仍凑不齐时启动。
   if (verified.length < 3) {
+    // 优先级:用户指定姓 > LLM 已经成功用过的姓 > 兜底常用姓(李,中国人口最多)。
+    // 旧实现在 auto 模式下若 LLM 完全没出过 candidate(parse 全失败/refusal)→
+    // surnameForRescue="" → 整个 rescue 被静默跳过,always-3 落空。落到 "李" 作为
+    // last-mile 默认值,确保即使 LLM 全军覆没也能交付 ≥1 个名(诚实标注在 masterComment)。
+    const FALLBACK_SURNAME = "李";
     const surnameForRescue =
       input.surnameChar ||
       verified[0]?.surnameChar ||
       first.candidates[0]?.surnameChar ||
-      "";
-    if (surnameForRescue) {
-      const rescued = rescueDeterministic(
-        surnameForRescue,
-        ctx,
-        3 - verified.length
-      );
-      verified = dedupe([...verified, ...rescued]);
-    }
+      FALLBACK_SURNAME;
+    const isFallback = surnameForRescue === FALLBACK_SURNAME && !input.surnameChar;
+    const rescued = rescueDeterministic(
+      surnameForRescue,
+      ctx,
+      3 - verified.length,
+      isFallback
+    );
+    verified = dedupe([...verified, ...rescued], ctx);
   }
 
   // ④ 评审先生打分排序、挑最自然的 3 个(评审失败则优雅降级用校验顺序)
@@ -169,10 +174,23 @@ export async function runNamingPipeline(
     try {
       const rankings = await runCritic(profile, verified, pool);
       if (rankings.length > 0) {
-        const byIdx = new Map(rankings.map((r) => [r.idx, r]));
+        // byIdx 保护:LLM 偶尔会返回:
+        //   ① 重复 idx —— Map 会 last-write-wins,旧实现静默覆盖 score(可能丢真分);
+        //   ② 越界 idx(>= verified.length) 或 NaN —— Map.get 返回 undefined,排序为 0;
+        //   ③ 漏标某些 idx —— 同样退化为 0,失去评审信号。
+        // 新策略:校验 idx ∈ [0, N) 且为整数;同一 idx 多次出现保留 score 最高那个;
+        //        漏标的候选默认 score=50 / accept=true,确保不被无差别沉底。
+        const N = verified.length;
+        const byIdx = new Map<number, typeof rankings[number]>();
+        for (const r of rankings) {
+          if (!Number.isInteger(r.idx) || r.idx < 0 || r.idx >= N) continue;
+          const prev = byIdx.get(r.idx);
+          if (!prev || r.score > prev.score) byIdx.set(r.idx, r);
+        }
         const sortKey = (i: number) => {
           const r = byIdx.get(i);
-          return (r?.accept ? 1000 : 0) + (r?.score ?? 0); // 通过者优先,再按分数
+          if (!r) return 50; // 未评中性分,不被刷到最底
+          return (r.accept ? 1000 : 0) + r.score; // 通过者优先,再按分数
         };
         ordered = verified
           .map((c, i) => {
@@ -198,19 +216,38 @@ function passing(
   candidates: ComposerCandidate[],
   ctx: VerifyContext
 ): ComposerCandidate[] {
-  return dedupe(candidates.filter((c) => verifyCandidate(c, ctx).ok));
+  return dedupe(candidates.filter((c) => verifyCandidate(c, ctx).ok), ctx);
 }
 
-function dedupe(cands: ComposerCandidate[]): ComposerCandidate[] {
-  const seen = new Set<string>();
-  const out: ComposerCandidate[] = [];
-  for (const c of cands) {
+/**
+ * 按"姓+名"去重 —— 同名出现多次时,留【出处更好】的那一个。
+ * 旧实现简单保留 first occurrence,导致 retry 阶段产出的同名但 lineId/charSpan 更佳
+ * (更高 fameScore 或更长 charSpan)的候选被丢弃。新策略:
+ *   先按 quality 分组择优(fameScore desc, then charSpan length desc),再按原顺序输出。
+ * 不传 ctx 也能用(测试便利),传了则取 pool 上的 fameScore。
+ */
+function dedupe(
+  cands: ComposerCandidate[],
+  ctx?: VerifyContext
+): ComposerCandidate[] {
+  const fameOf = (lineId: number): number =>
+    ctx?.pool.find((p) => p.chunkId === lineId)?.fameScore ?? 0;
+  const quality = (c: ComposerCandidate): number =>
+    fameOf(c.lineId) * 100 + (c.charSpan?.length ?? 0);
+
+  // ① 按 hanzi 分组,在每组里挑 quality 最高
+  const bestByKey = new Map<string, ComposerCandidate>();
+  const firstIndexByKey = new Map<string, number>();
+  cands.forEach((c, i) => {
     const key = c.surnameChar + c.givenChars.join("");
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(c);
-  }
-  return out;
+    const prev = bestByKey.get(key);
+    if (!prev || quality(c) > quality(prev)) bestByKey.set(key, c);
+    if (!firstIndexByKey.has(key)) firstIndexByKey.set(key, i);
+  });
+  // ② 按 first-seen 顺序输出(保持原始排序稳定性)
+  return [...bestByKey.entries()]
+    .sort((a, b) => firstIndexByKey.get(a[0])! - firstIndexByKey.get(b[0])!)
+    .map(([, c]) => c);
 }
 
 /**
@@ -221,11 +258,17 @@ function dedupe(cands: ComposerCandidate[]): ComposerCandidate[] {
 function rescueDeterministic(
   surnameChar: string,
   ctx: VerifyContext,
-  needed: number
+  needed: number,
+  isFallbackSurname = false
 ): ComposerCandidate[] {
   if (needed <= 0 || !surnameChar) return [];
   const out: ComposerCandidate[] = [];
   const usedChars = new Set<string>();
+  // 兜底姓时在 masterComment 末尾追加诚实提示,便于前端日志/排查;
+  // 用户不会因此误以为"系统坚信你应该姓李"。
+  const fallbackNote = isFallbackSurname
+    ? " (System-assigned surname; the AI did not converge on a candidate this round.)"
+    : "";
 
   for (const line of ctx.pool) {
     if (out.length >= needed) break;
@@ -249,7 +292,7 @@ function rescueDeterministic(
         givenChars: [ch],
         meanings: { [ch]: `${el} element` },
         poeticMeaning: `Drawn from ${line.author}'s 《${line.title}》, this single-character name carries the ${el} essence with quiet classical grace.`,
-        masterComment: `A graceful single-character name (姓+1),verifiably grounded in a real ${line.dynasty}-dynasty line.`,
+        masterComment: `A graceful single-character name (姓+1),verifiably grounded in a real ${line.dynasty}-dynasty line.${fallbackNote}`,
       };
       const r = verifyCandidate(candidate, ctx);
       if (r.ok) {

@@ -42,6 +42,13 @@ const HARD_SET = new Set<string>([
   ...hard.overweening,
   ...hard.crude,
 ]);
+// 姓氏专用黑名单:inauspicious + crude(死/亡/魂/煞/屎/尿 …)—— 永远不可能是真姓氏。
+// 不收 functionWords / overweening:王/何/莫/龙/帝 等里有真实姓氏(王是中国第一大姓),
+// 拒掉这些会误伤用户的真实姓。auto 模式下 LLM 自选姓时,此白名单防止它捡 魂/煞。
+const SURNAME_HARD_SET = new Set<string>([
+  ...hard.inauspicious,
+  ...hard.crude,
+]);
 const genderForbidden = (
   blacklistData as { genderForbidden: { male: string[]; female: string[] } }
 ).genderForbidden;
@@ -108,6 +115,15 @@ export function isHardBlacklisted(c: string): boolean {
 /** 是否为虚词(之乎者也兮…) —— charSpan 跳字白名单专用,严格于 isHardBlacklisted。 */
 export function isFunctionWord(c: string): boolean {
   return FUNCTION_WORD_SET.has(c);
+}
+
+/**
+ * 姓氏专用硬黑名单:仅拦 inauspicious + crude(永远不可能是真姓氏)。
+ * 王/何/莫/龙 等"看似负面但实为真姓"的字不在此列 —— 不会误伤用户的真实姓。
+ * 仅在 auto 模式 LLM 自选姓时起作用。
+ */
+export function isSurnameBlacklisted(c: string): boolean {
+  return SURNAME_HARD_SET.has(c);
 }
 
 export function isGenderForbidden(c: string, gender: "male" | "female"): boolean {

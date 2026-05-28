@@ -108,10 +108,17 @@ Score every candidate and return ONLY the JSON.`.trim();
   if (!parsed || !Array.isArray(parsed.rankings)) return [];
   return parsed.rankings.map((raw) => {
     const r = (raw ?? {}) as Record<string, unknown>;
+    const score = Number(r.score) || 0;
+    // accept 缺省策略:严格三态。Claude 偶尔会漏掉 accept 字段,旧代码 `r.accept !== false`
+    // 在缺省时默认 true → 性别明显冲突的候选若 LLM 忘标 accept=false,会获得 +1000 排序加成
+    // 蹿到前 3。新策略:① 显式 true → accept ② 显式 false → reject ③ 缺省 → 退回分数门槛
+    // (≥60 才视为 accept),与 prompt 中"GENDER AUTO-REJECT … score ≤ 40"互相印证。
+    const accept =
+      r.accept === true ? true : r.accept === false ? false : score >= 60;
     return {
       idx: Number(r.idx),
-      score: Number(r.score) || 0,
-      accept: r.accept !== false,
+      score,
+      accept,
       comment: r.comment ? String(r.comment) : undefined,
     };
   });

@@ -14,6 +14,7 @@ import {
   elementOfChar,
   isHardBlacklisted,
   isFunctionWord,
+  isSurnameBlacklisted,
   isGenderForbidden,
   isGenderClashing,
   pinyinOf,
@@ -79,8 +80,14 @@ export function verifyCandidate(
     }
   }
 
-  // ② 黑名单 / 性别禁用(仅查"名"字;姓不查黑名单 —— 王/何/莫 等都是常见姓氏,
-  //    不能因它们在虚词/僭越表里就拒掉用户的真实姓氏)
+  // ② 黑名单 / 性别禁用
+  // 姓:仅拦"绝对不可能是真姓"的字(inauspicious + crude:死/亡/魂/煞/屎/尿…)。
+  //     王/何/莫/龙 等"虚词/僭越表"里的字仍放行,因为它们是真实存在的姓氏。
+  //     auto 模式下,LLM 自选姓时此关防止它捡 魂/煞/屁 当姓 —— specified 模式下用户自选时
+  //     若用户硬要"屎",活该被拦(几乎不可能发生)。
+  if (isSurnameBlacklisted(c.surnameChar)) {
+    reasons.push(`姓「${c.surnameChar}」不宜为姓氏(不吉/粗俗)`);
+  }
   for (const ch of c.givenChars) {
     if (isHardBlacklisted(ch)) reasons.push(`「${ch}」入诗不入名(黑名单)`);
     if (ctx.gender && isGenderForbidden(ch, ctx.gender)) {

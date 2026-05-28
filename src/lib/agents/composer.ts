@@ -100,13 +100,20 @@ export function buildPoolBlock(pool: ScoredPoem[]): string {
 
 // 用户消息(本次命主信息 + 任务)。
 export function buildComposerUserMessage(profile: ComposerProfile): string {
-  const nameChars =
-    profile.recommendedNameLength.includes("2 characters") &&
-    !profile.recommendedNameLength.includes("3")
-      ? "1 given character (2-char name total)"
-      : profile.recommendedNameLength.includes("3 characters")
-      ? "2 given characters (3-char name total)"
-      : "1 or 2 given characters";
+  // bazi.ts 实际产出三种 nameLength 字符串(L262-269):
+  //   Strong   → "2 characters (Surname + 1 Name)"
+  //   Weak     → "3 characters (Surname + 2 Names)"
+  //   Balanced → "2 or 3 characters"
+  // 旧逻辑 `includes("2 characters") && !includes("3")` 对 Balanced 二个分支都假 →
+  // 误归入 3-char,Balanced 用户永远拿不到 2 字名选择。改为显式优先匹配 Balanced。
+  const len = profile.recommendedNameLength;
+  const nameChars = len.includes("2 or 3")
+    ? "1 or 2 given characters (your choice; vary across the 6 candidates)"
+    : len.startsWith("2 characters")
+    ? "1 given character (2-char name total)"
+    : len.startsWith("3 characters")
+    ? "2 given characters (3-char name total)"
+    : "1 or 2 given characters";
 
   return `
 Profile of the person to be named:

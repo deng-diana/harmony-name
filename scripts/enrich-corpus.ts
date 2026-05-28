@@ -654,43 +654,69 @@ async function main() {
   console.log(`Total curated entries: ${ENTRIES.length}`);
   console.log("=".repeat(60));
 
-  // —— Step 1: 去重 (按 title + author 检索 poems 表) ——
-  const toInsert: CuratedEntry[] = [];
-  let dedupedCount = 0;
+  // —— Step 1: 去重 + 孤儿修复 ——
+  // 旧实现:只查 poems 是否存在 → 上一次跑失败留下的 orphan poem(poems 行存在但
+  // poem_chunks 没插成功)会被永远跳过,数据静默丢失。
+  // 新实现:同时检查 poem_chunks 是否存在;若 poem 存在但 chunk 缺失 → 标为 ORPHAN,
+  // 走"重补 chunk"分支(不再插 poem,只补丢失的 chunk)。
+  const toInsert: CuratedEntry[] = []; // 全新条目
+  const toRehealChunk: { entry: CuratedEntry; poemId: number }[] = []; // poem 在、chunk 缺
+  let healthyDuplicates = 0;
   for (const e of ENTRIES) {
-    const { data, error } = await supabaseAdmin
+    const { data: poemRows, error: pqErr } = await supabaseAdmin
       .from("poems")
       .select("id")
       .eq("title", e.title)
       .eq("author", e.author)
       .limit(1);
-    if (error) {
-      console.error(`  [dedupe error] ${e.title} / ${e.author}: ${error.message}`);
+    if (pqErr) {
+      console.error(`  [dedupe error] ${e.title} / ${e.author}: ${pqErr.message}`);
       continue;
     }
-    if (data && data.length > 0) {
-      dedupedCount++;
+    if (!poemRows || poemRows.length === 0) {
+      toInsert.push(e);
       continue;
     }
-    toInsert.push(e);
+    const poemId = poemRows[0].id as number;
+    // poem 存在 —— 看 chunk 有没有
+    const { count: chunkCount, error: cqErr } = await supabaseAdmin
+      .from("poem_chunks")
+      .select("*", { count: "exact", head: true })
+      .eq("poem_id", poemId);
+    if (cqErr) {
+      console.error(`  [chunk-check error] poem #${poemId}: ${cqErr.message}`);
+      continue;
+    }
+    if ((chunkCount ?? 0) === 0) {
+      console.warn(`  ⚠ ORPHAN 发现:poem #${poemId}「${e.title}」无 chunk → 列入补救`);
+      toRehealChunk.push({ entry: e, poemId });
+    } else {
+      healthyDuplicates++;
+    }
   }
-  console.log(`\nDedupe: ${dedupedCount} already exist, ${toInsert.length} to insert`);
+  console.log(
+    `\nDedupe: ${healthyDuplicates} healthy existing, ${toRehealChunk.length} orphan-to-heal, ${toInsert.length} new to insert`
+  );
 
-  if (toInsert.length === 0) {
-    console.log("Nothing to insert. Exiting.");
+  if (toInsert.length === 0 && toRehealChunk.length === 0) {
+    console.log("Nothing to insert or heal. Exiting.");
     return;
   }
 
-  // —— Step 2: 一次性 embed 所有 chunk_text ——
-  console.log(`\nEmbedding ${toInsert.length} chunks via text-embedding-3-small …`);
+  // —— Step 2: 一次性 embed【新插】+【孤儿补救】的所有 chunk_text ——
+  const allChunkTexts = [
+    ...toInsert.map((e) => e.chunk_text),
+    ...toRehealChunk.map((x) => x.entry.chunk_text),
+  ];
+  console.log(`\nEmbedding ${allChunkTexts.length} chunks via text-embedding-3-small …`);
   const embedResp = await openai.embeddings.create({
     model: "text-embedding-3-small",
-    input: toInsert.map((e) => e.chunk_text),
+    input: allChunkTexts,
     encoding_format: "float",
   });
   const embeddings = embedResp.data.map((d) => d.embedding);
-  if (embeddings.length !== toInsert.length) {
-    throw new Error(`embed count ${embeddings.length} != entries ${toInsert.length}`);
+  if (embeddings.length !== allChunkTexts.length) {
+    throw new Error(`embed count ${embeddings.length} != entries ${allChunkTexts.length}`);
   }
   console.log(`  embeddings: ${embeddings.length} vectors`);
 
@@ -737,7 +763,28 @@ async function main() {
     process.stdout.write(`\r  inserted ${okChunks}/${toInsert.length}  `);
   }
 
-  console.log(`\n\nDone: poems=${okPoems}, chunks=${okChunks}, failures=${failures.length}, deduped=${dedupedCount}`);
+  // —— Step 3b: 补救 orphan poems(只插 chunk,不重新插 poem) ——
+  let healedChunks = 0;
+  for (let i = 0; i < toRehealChunk.length; i++) {
+    const { entry, poemId } = toRehealChunk[i];
+    const v = embeddings[toInsert.length + i];
+    const { error: cErr } = await supabaseAdmin.from("poem_chunks").insert({
+      poem_id: poemId,
+      chunk_text: entry.chunk_text,
+      chunk_index: 0,
+      embedding: JSON.stringify(v),
+    });
+    if (cErr) {
+      failures.push({ entry, reason: `orphan-heal chunks insert (poem #${poemId}): ${cErr.message}` });
+      continue;
+    }
+    healedChunks++;
+    process.stdout.write(`\r  healed orphan ${healedChunks}/${toRehealChunk.length}  `);
+  }
+
+  console.log(
+    `\n\nDone: new poems=${okPoems}, new chunks=${okChunks}, healed orphan chunks=${healedChunks}, failures=${failures.length}, healthy duplicates=${healthyDuplicates}`
+  );
   if (failures.length) {
     console.log("\nFailures:");
     for (const f of failures) {
