@@ -34,8 +34,11 @@ scripts/poem-chunks.json
 # one-off local dev provisioning scripts (contain hardcoded test creds)
 /scripts/setup-e2e-user.ts
 
-# Per-session working log (local-only, see CLAUDE.md "Working conventions")
-/SCRATCHPAD.md
+# Per-session working log: public version (SCRATCHPAD.md) IS committed for
+# durability + portfolio. Private version (.local suffix, mirrors Next.js
+# `.env.local` convention) holds roadmap / soft state — never committed.
+# See CLAUDE.md "Working conventions".
+/SCRATCHPAD.local.md
 
 # debug
 npm-debug.log*

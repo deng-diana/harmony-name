@@ -85,27 +85,41 @@ encouraged and matches existing history (`fix(naming): ...`,
 `feat(bazi): ...`). If a change spans types, pick the dominant one
 (a fix that adds a small test → still `fix:`).
 
-### SCRATCHPAD.md (per-session working log)
+### SCRATCHPAD — per-session working log (dual file)
 
-`SCRATCHPAD.md` at the repo root — **gitignored, local only**
-(per user preference; this is a solo-on-one-machine project for now).
-Working log of "where we left off."
+Two files at repo root, separating durability needs from privacy needs:
 
-- Latest session on top (reverse chronological); a single
-  `▶ Resume here` pointer at the very top — the next concrete action.
-- Each session block: what landed (commit SHAs), what's deferred and
-  why, open questions for the user. Not a re-narration of tool calls —
-  captures the "why" + pending state that `git log` doesn't show.
-- **Update after every commit** — append/update the relevant session
-  block. Don't bundle a SCRATCHPAD-only commit; let the next code
-  commit sweep it (file is gitignored anyway).
+- **`SCRATCHPAD.md`** — **committed**, sanitized for public viewing
+  (this repo is public). Contains: commit SHAs, what landed, technical
+  decisions + reasoning, test/verification outcomes. Things `git log`
+  alone doesn't capture but are safe to broadcast.
+- **`SCRATCHPAD.local.md`** — **gitignored**, full personal state.
+  Contains: `▶ Resume here` pointer (the next concrete action),
+  deferred roadmap items, open decisions, soft state, half-baked
+  ideas. Mirrors the `.env` / `.env.local` Next.js convention
+  (`.local` suffix = local-only).
+
+**Why split:** public repo + single laptop means a single gitignored
+file fails both privacy (anything committed leaks roadmap) AND
+durability (anything gitignored has no backup). Split lets each file
+serve one purpose. For a private repo, the two could collapse to one
+committed file.
+
+**Update cadence (both files):**
+
+- **After every commit** → append/update the relevant session block.
+  Don't make a SCRATCHPAD-only commit; let the next code commit sweep
+  the public file (the local file is gitignored anyway).
 - **Before ending a session, proactively ask the user**: "want me to
-  update SCRATCHPAD.md before we stop?" — don't make them remember.
-- Session sections older than 15 days → archive to
+  update SCRATCHPAD before we stop?" — don't make them remember.
+- **Sessions older than 15 days** → move to
   `docs/scratchpad-archive/YYYY-MM.md` (also gitignored since `/docs`
   is in `.gitignore`). Keeps the live file scannable.
-- Never put secrets / env values in it — even though gitignored, treat
-  as durable text on disk.
+- **Never** put secrets / API keys / env values in either file.
+
+**First-session bootstrap in a new repo:** create both files. If the
+repo is private and the user wants single-file, collapse to just
+`SCRATCHPAD.md` committed.
 
 See `~/.claude/CLAUDE.md` for the cross-project version of this rule.
 
