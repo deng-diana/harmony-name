@@ -13,10 +13,11 @@ npm run dev        # Next.js dev server (Turbopack)
 npm run build      # Production build
 npm run start      # Serve production build
 npm run lint       # ESLint (eslint-config-next)
+npm test           # vitest run — currently 48 tests across 3 files
 npx tsc            # Type-check only (tsconfig has noEmit)
 ```
 
-There is **no test framework** in this repo — do not assume `npm test` exists.
+Tests live next to source: `src/lib/bazi.test.ts`, `src/lib/namechars.test.ts`, `src/lib/verify.test.ts`. No vitest config file — defaults are fine. Add `*.test.ts` next to the file it covers; pure-logic modules only (no React component tests).
 
 ### Data pipeline (poetry vector DB) — run in order
 
@@ -27,6 +28,10 @@ npx tsx scripts/seed-supabase.ts     # embeds chunks (OpenAI) + inserts into Sup
 ```
 
 Database schema lives in `supabase/migrations/001_create_poems_tables.sql`, then **`scripts/add-fame-score.sql` (run manually in the Supabase SQL editor)** which adds the `fame_score` column and *redefines* the `search_poem_chunks` RPC. The add-fame-score version is the one the app actually calls — it takes `query_embedding` as **text** (a JSON-stringified vector), returns `source` + `fame_score`, and ranks by `0.7 * cosine_similarity + 0.3 * (fame_score/3)`. The function signature in migration 001 is superseded.
+
+**Required for v2 multi-agent pipeline** — run these in the Supabase SQL editor too:
+- `supabase/migrations/005_search_poem_chunks_add_chunk_id.sql` — re-creates the RPC so it also returns `chunk_id` (lineId). The v2 composer references lines by id; without this column the pipeline cannot hydrate citations.
+- `supabase/migrations/006_chunk_text_trgm_and_by_chars.sql` — installs `pg_trgm` + GIN index on `chunk_text` and adds `search_chunks_by_chars(chars text[])`, used to fetch real lines containing the favourable-element candidate characters.
 
 ### MCP server
 
@@ -39,6 +44,11 @@ Database schema lives in `supabase/migrations/001_create_poems_tables.sql`, then
 - `CLAUDE_API_KEY` — name generation (note: **not** `ANTHROPIC_API_KEY`; `src/lib/claude.ts` reads `CLAUDE_API_KEY`)
 - `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` — pgvector access (service-role key; `supabaseAdmin.ts` is server-only, never import it in client code)
 
+Optional:
+- `NAMING_PIPELINE_V2` — set to `"true"` to enable the v2 multi-agent grounded pipeline. Unset / any other value → the legacy single-shot Claude path runs. **Currently unset in prod.**
+- `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` — enables per-user rate limiting on `/api/generate`. Skipped silently if absent.
+- `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` / `NEXT_PUBLIC_STRIPE_*` — Stripe is in TEST mode; live keys are intentionally not configured.
+
 OpenAI and Claude are **both** required and serve different roles: Anthropic has no embedding model, so RAG retrieval uses OpenAI while generation uses Claude (`claude-sonnet-4-20250514`). The README badge saying "GPT-4o-mini" is stale — generation migrated to Claude.
 
 ## Architecture
@@ -48,17 +58,59 @@ Request flow (the path the frontend actually uses):
 ```
 src/app/app/page.tsx  (the app; src/app/page.tsx is the landing page)
   → calculateBazi() runs CLIENT-SIDE          [deterministic layer, src/lib/bazi.ts]
-  → POST /api/generate with the computed BaZi  [SSE streaming]
-      → searchPoems()  → OpenAI embed → Supabase RPC   [RAG, src/lib/retriever.ts]
-      → claude.messages.create()                       [generation]
-      → streams {type:"progress"} events, then {type:"result"}
+  → POST /api/generate with the computed BaZi  [SSE streaming, auth + credit gated]
+
+  /api/generate route then forks on NAMING_PIPELINE_V2:
+
+  v2 (flag = "true") — multi-agent grounded pipeline  [src/lib/pipeline/orchestrate.ts]
+      ① candidateCharsFor(favourable, gender)        [src/lib/namechars.ts]
+        + buildVerifiedPool({chars, imageryQuery})   [src/lib/retriever.ts: by-chars + semantic]
+      ② Composer 取名先生 (Claude)                    [src/lib/agents/composer.ts]
+          emits lineId + charSpan + chars — NEVER poem text
+      ③ verifyCandidate() — pure code gate           [src/lib/verify.ts]
+          retry-with-feedback if <3 pass; broaden + single-char rescue if still <3;
+          deterministic last-mile rescue (no LLM) guarantees ≥1 name
+      ④ Critic 评审先生 (Claude)                      [src/lib/agents/critic.ts]
+          evaluator-optimizer scoring, taste only — not facts
+      ⑤ hydrate(): code fills citation/原文/pinyin/element from pool & namechars
+
+  legacy (flag unset/false; CURRENTLY LIVE IN PROD) — single-shot Claude
+      → searchPoems()              [RAG, src/lib/retriever.ts]
+      → claude.messages.create()   [prompt-only grounding via src/lib/prompt.ts]
 ```
 
 ### The generation route — `src/app/api/generate/route.ts`
 
-SSE streaming, **expects the BaZi profile already computed** (gender, dayMaster, strength, favourableElements…) since the page runs `calculateBazi()` client-side. Emits `progress`/`result`/`error` events as `data: {json}\n\n`. It is **gated**: requires an authenticated user (401), atomically deducts 1 credit before any AI call (402 if empty), and refunds on generation failure — see `src/lib/credits.ts`. Builds prompts via `src/lib/prompt.ts`, retrieves via `src/lib/retriever.ts`, calls Claude via `src/lib/claude.ts`, and inlines an `ELEMENT_IMAGERY` map that turns favourable elements into Chinese search terms.
+SSE streaming, **expects the BaZi profile already computed** (gender, dayMaster, strength, favourableElements…) since the page runs `calculateBazi()` client-side. Emits `progress`/`result`/`error` events as `data: {json}\n\n`.
+
+**Gating order** (deliberate — cheap rejections before any AI call):
+1. `getUser()` → 401 `UNAUTHENTICATED` if no session.
+2. Upstash ratelimit (skipped if unconfigured) → 429 `RATE_LIMITED`.
+3. Zod schema validation → 400 `VALIDATION_ERROR`.
+4. `deductCredit()` → 402 `INSUFFICIENT_CREDITS` if empty. See `src/lib/credits.ts`.
+5. SSE stream opens. On *any* generation failure (empty content, parse error, NO_VERIFIED_NAMES, thrown exception) → `refundCredit(user.id)` then `error` event with `creditsRemaining`. Refund is idempotent (one-shot `refunded` flag).
+
+**Pipeline switch:** `const PIPELINE_V2 = process.env.NAMING_PIPELINE_V2 === "true"`. Unset in prod today → the legacy single-shot path is live. Set to `"true"` to route through the multi-agent pipeline. Both paths archive to the `generations` table and emit the same `result` shape.
+
+### v2 multi-agent pipeline — `src/lib/pipeline/orchestrate.ts`
+
+The core invariant: **"agents for judgment, code for facts."** Fabrication is structurally impossible because the LLM never emits poem text — only references.
+
+- **Composer (`src/lib/agents/composer.ts`)** — Claude Sonnet 4. System prompt is cached (ephemeral). Takes the BaZi profile + the verified pool (real lines with `chunkId`). Returns 6 candidates, each `{lineId, charSpan, surnameChar, givenChars[], meanings, poeticMeaning, ...}`. It is forbidden from writing any poem title/author/full line. `charSpan` must be a contiguous substring of the cited line and contain all `givenChars` — verified by code.
+- **verifyCandidate (`src/lib/verify.ts`)** — pure deterministic gate, no LLM. Checks: (1) `lineId` is in pool and `charSpan` is a real substring of that line's `chunkText`; (2) every `givenChar` is in the span; non-given chars inside the span are only allowed if they are function words (之/乎/兮/…); (3) blacklists + gender-forbidden + gender-clashing; (4) at least one given char carries a favourable element, none carry an avoid element; (5) tones not all identical for 3-char names. Returns structured `reasons[]` — these are fed back to the Composer as `REVISION FEEDBACK` for the retry round (lightweight evaluator-optimizer).
+- **Critic (`src/lib/agents/critic.ts`)** — Claude Sonnet 4 again, lower temperature. Scores 0–100 with a weighted rubric (gender 18 / phonetics 18 / semantics 17 / poetic source 15 / element 15 / surname harmony 10 / modern aesthetics 7) and may set `accept=false`. It does NOT re-check facts. The orchestrator defends against duplicate/out-of-range/missing `idx` values (last-mile: missing idx → neutral 50, never silently sunk).
+- **Always-3 guarantee.** Three rescue tiers if `<3` candidates pass verification: (i) retry the Composer with failure feedback; (ii) widen the pool + force single-char given names; (iii) `rescueDeterministic()` — pure code scans the pool for favourable-element + gender-appropriate chars and pairs them with the surname. The fallback surname is `李` (annotated honestly in `masterComment`) so the API never returns 0 names even when LLM output is unusable.
+- **hydrate() (the citation fill).** Looks up `lineId` in the pool, wraps the given chars with `{}` inside the real `chunkText`, builds `culturalHeritage.source` as `《title》— author (dynasty)`. Anatomy elements come from `elementOfChar()`; pinyin from `pinyinOf()` (pinyin-pro). Nothing here trusts LLM strings for facts.
+
+### Curated character library — `src/lib/namechars.ts` + `src/data/`
+
+`src/data/name-chars.json` is hand-curated: each Five Element → array of name-suitable characters, plus `_genderLean` (masculineLean / feminineLean) and a `_rule` doc-string. `src/data/name-blacklist.json` has `hard.functionWords / inauspicious / overweening / crude` plus `genderForbidden.male/female`. `candidateCharsFor(favourable, gender)` is what feeds both the by-chars retrieval query and the Composer prompt — order matters: same-gender lean → neutral → (never) opposite lean. `elementOfChar()` is the reverse lookup used during hydrate.
 
 (A second non-streaming `/api/gpt` route used to exist but was dead code and has been removed.)
+
+### Auth, credits, Stripe
+
+`src/lib/credits.ts` does atomic deduct/refund against the `profiles.credits` column (Supabase RPC). The full auth + credits + Stripe story (Stripe Checkout for credit packs, webhook reconciles) lives in `src/lib/stripe.ts` and `src/app/api/stripe/*`. **Stripe is in TEST mode** — do not flip to live mode unilaterally; that's a deliberate release decision.
 
 ### `src/lib/bazi.ts` is isomorphic — keep it dependency-light
 
