@@ -34,6 +34,9 @@ scripts/poem-chunks.json
 # one-off local dev provisioning scripts (contain hardcoded test creds)
 /scripts/setup-e2e-user.ts
 
+# Per-session working log (local-only, see CLAUDE.md "Working conventions")
+/SCRATCHPAD.md
+
 # debug
 npm-debug.log*
 yarn-debug.log*

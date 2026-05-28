@@ -75,6 +75,40 @@ It's imported by the **client** page, by the **API** route, and by the **MCP** s
 
 App Router, React 19, Tailwind v4. State machine in `app/page.tsx` toggles `phase: "form" | "results"`. Hooks: `useCitySearch` (Open-Meteo geocoding for longitude/timezone), `useTTS` (Web Speech API, Chinese voice). Path alias `@/*` → `src/*`.
 
+## Working conventions
+
+### Commit messages
+
+Always prefix the first line with conventional-commit type:
+`feat | fix | docs | refactor | chore | test`. Scope in parens is
+encouraged and matches existing history (`fix(naming): ...`,
+`feat(bazi): ...`). If a change spans types, pick the dominant one
+(a fix that adds a small test → still `fix:`).
+
+### SCRATCHPAD.md (per-session working log)
+
+`SCRATCHPAD.md` at the repo root — **gitignored, local only**
+(per user preference; this is a solo-on-one-machine project for now).
+Working log of "where we left off."
+
+- Latest session on top (reverse chronological); a single
+  `▶ Resume here` pointer at the very top — the next concrete action.
+- Each session block: what landed (commit SHAs), what's deferred and
+  why, open questions for the user. Not a re-narration of tool calls —
+  captures the "why" + pending state that `git log` doesn't show.
+- **Update after every commit** — append/update the relevant session
+  block. Don't bundle a SCRATCHPAD-only commit; let the next code
+  commit sweep it (file is gitignored anyway).
+- **Before ending a session, proactively ask the user**: "want me to
+  update SCRATCHPAD.md before we stop?" — don't make them remember.
+- Session sections older than 15 days → archive to
+  `docs/scratchpad-archive/YYYY-MM.md` (also gitignored since `/docs`
+  is in `.gitignore`). Keeps the live file scannable.
+- Never put secrets / env values in it — even though gitignored, treat
+  as durable text on disk.
+
+See `~/.claude/CLAUDE.md` for the cross-project version of this rule.
+
 ## Note
 
 `course.html` (untracked) and `/docs` (gitignored) are generated artifacts / planning docs, not application code.
