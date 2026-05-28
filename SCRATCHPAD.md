@@ -16,7 +16,25 @@
 - `79b2baa` fix(ui): brace-aware poem highlighting + hide empty translation
 - `54af8fe` docs: add SCRATCHPAD.md (working log of session state)
 - `51c5aa6` docs: consolidate working conventions into CLAUDE.md, gitignore SCRATCHPAD.md
-- *(this commit)* docs: split SCRATCHPAD into public + private (dual-file for public repo)
+- `76756db` docs: split SCRATCHPAD into committed (public) + .local (gitignored)
+- `d8d5c4e` docs(claude): fix stale test-framework claim + document v2 pipeline
+- `67e3829` docs(readme): rewrite to match current architecture
+- `861631d` feat(eval): v0 name-quality eval harness (8 fixtures, 3 metrics)
+
+### Eval v0 baseline (the first data point on the compound curve)
+
+Ran against current main (8 profiles, 23 names, 8.5 min, ~$0.40):
+
+| Metric              | Pass rate  |
+|---------------------|------------|
+| Citation accuracy   | 100% (23/23) — anti-fabrication holds end-to-end
+| Always-3 invariant  |  88% (7/8)  — 1 edge case (Balanced female narrow Fire/Earth)
+| Element correctness | 100% (23/23)
+
+Citation 100% confirms the v2 grounded pipeline structurally
+prevents the fabrication class of bugs from the original 中天明月色
+case. The one always-3 miss is the constructed worst-case edge —
+worth investigating whether rescueDeterministic fired.
 
 ### Engineering work
 
