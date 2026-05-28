@@ -73,9 +73,13 @@ export function NameCard({
                   name.hanzi
                 )}
               </p>
-              <p className="text-sm text-stone-500 italic mb-3 border-l-2 border-stone-300 pl-3">
-                &ldquo;{name.culturalHeritage?.translation}&rdquo;
-              </p>
+              {/* translation 可能为空(deterministic rescue 路径没走 LLM 翻译),
+                  此时不要渲染一对空引号,以免出现尴尬的 "" */}
+              {name.culturalHeritage?.translation?.trim() && (
+                <p className="text-sm text-stone-500 italic mb-3 border-l-2 border-stone-300 pl-3">
+                  &ldquo;{name.culturalHeritage.translation}&rdquo;
+                </p>
+              )}
               <div className="text-[10px] text-stone-400 font-bold uppercase tracking-wide">
                 Source: {name.culturalHeritage?.source}
               </div>

@@ -28,6 +28,12 @@
 /docs/
 scripts/poem-chunks.json
 
+# Claude Code internal state (per-session locks, etc.)
+/.claude/
+
+# one-off local dev provisioning scripts (contain hardcoded test creds)
+/scripts/setup-e2e-user.ts
+
 # debug
 npm-debug.log*
 yarn-debug.log*
