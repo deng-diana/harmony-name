@@ -40,6 +40,10 @@ scripts/poem-chunks.json
 # See CLAUDE.md "Working conventions".
 /SCRATCHPAD.local.md
 
+# Eval harness per-run results (timestamped, ~40KB each, would balloon git
+# history). The fixtures and script are committed; outputs are local-only.
+/fixtures/eval-results-*.json
+
 # debug
 npm-debug.log*
 yarn-debug.log*

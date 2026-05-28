@@ -1,0 +1,77 @@
+{
+  "_note": "v0 eval profiles for HarmonyName naming pipeline. Mix of easy/hard/edge cases. Coordinates use {longitude, timezone} as src/lib/bazi.ts expects. surname=auto for all (default).",
+  "profiles": [
+    {
+      "id": "easy-1-shanghai-spring",
+      "label": "easy: balanced spring Wood",
+      "gender": "male",
+      "birthDate": "1990-04-15",
+      "birthTime": "09:00",
+      "city": { "longitude": 121.4737, "timezone": "Asia/Shanghai" },
+      "notes": "Spring birth, mid-morning. Tends to produce a Balanced or mildly Strong day master with multiple favourable elements — easy case."
+    },
+    {
+      "id": "easy-2-guangzhou-autumn",
+      "label": "easy: autumn balanced",
+      "gender": "female",
+      "birthDate": "1992-10-20",
+      "birthTime": "14:00",
+      "city": { "longitude": 113.2644, "timezone": "Asia/Shanghai" },
+      "notes": "Autumn afternoon birth. Usually well-supported, broad favourable elements."
+    },
+    {
+      "id": "easy-3-chengdu-summer",
+      "label": "easy: summer balanced",
+      "gender": "male",
+      "birthDate": "1988-06-10",
+      "birthTime": "08:00",
+      "city": { "longitude": 104.0668, "timezone": "Asia/Shanghai" },
+      "notes": "Early summer morning. Typically Balanced/Strong with healthy element spread."
+    },
+    {
+      "id": "hard-1-beijing-strong-wood",
+      "label": "HARD: strong Wood, narrow favourable Metal/Fire/Earth (the case we e2e'd today)",
+      "gender": "female",
+      "birthDate": "1995-08-12",
+      "birthTime": "12:00",
+      "city": { "longitude": 116.4, "timezone": "Asia/Shanghai" },
+      "notes": "Strong Wood day master. Favourable: Metal / Fire / Earth (no Water, no Wood). Constrained: many gendered/forbidden chars knock out otherwise-fit candidates. Known stress case for the pipeline."
+    },
+    {
+      "id": "hard-2-shenzhen-winter-weak",
+      "label": "HARD: weak Water in winter, female",
+      "gender": "female",
+      "birthDate": "1993-12-22",
+      "birthTime": "04:00",
+      "city": { "longitude": 114.0579, "timezone": "Asia/Shanghai" },
+      "notes": "Deep winter pre-dawn, female. Often a constrained profile — testing whether favourable elements still produce 3 verified names."
+    },
+    {
+      "id": "hard-3-xian-strong-fire",
+      "label": "HARD: summer Fire day, male",
+      "gender": "male",
+      "birthDate": "1985-07-25",
+      "birthTime": "13:00",
+      "city": { "longitude": 108.948, "timezone": "Asia/Shanghai" },
+      "notes": "Peak summer mid-day. Likely Strong Fire; favourables narrow to Water/Metal/Earth. Tests strong-day-master flow."
+    },
+    {
+      "id": "edge-1-unknown-time",
+      "label": "edge: unknown birthTime (3-pillar)",
+      "gender": "male",
+      "birthDate": "1991-03-08",
+      "birthTime": "unknown",
+      "city": { "longitude": 121.4737, "timezone": "Asia/Shanghai" },
+      "notes": "Hour pillar dropped → bazi.ts uses 3 pillars + naive noon for date calc. Stress-tests that the pipeline still works without 时柱."
+    },
+    {
+      "id": "edge-2-female-strong-yang",
+      "label": "edge: female with strong yang energy (gender-clash potential)",
+      "gender": "female",
+      "birthDate": "1987-05-05",
+      "birthTime": "12:00",
+      "city": { "longitude": 116.4, "timezone": "Asia/Shanghai" },
+      "notes": "Female, born noon Beijing in spring (立夏 boundary). Favourables may skew yang (Metal/Fire) → tests whether the gender filter still finds feminine chars."
+    }
+  ]
+}
