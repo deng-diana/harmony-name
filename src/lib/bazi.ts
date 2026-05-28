@@ -280,19 +280,29 @@ function analyzeStrength(
   }
 
   // 调候(climatic adjustment, 命理 #1 增强):在扶抑之上叠加气候平衡之神。
-  // 冬令的【火/木】寒冷,急需"暖"(火);夏令的【金/水/土/木】炎燥,急需"润"(水)。
-  // 若调候之神原不在喜用 → 补入;若原在忌神 → 移出(调候优先于扶抑)。
-  // 注:这是简化主流口径(未涉及湿燥细分、从格等)。
+  // 主流口径(《穷通宝鉴》):
+  //   冬令(亥子丑)寒 → 火/木/土/金/水(各日主)都喜【火】解寒;
+  //   夏令(巳午未)炎 → 木/土/火/水 喜【水】润;但「夏水须金」(壬癸 met 庚辛为源)。
+  // 只补入 favourable(前置),不强行从 avoid 移出 —— 避免 favourable/avoid 自相矛盾;
+  // 下游 prompt 看到冲突时由评审先生权衡。简化主流口径,湿燥细分/从格留后续。
   const season = MONTH_ZHI_SEASON[monthZhi];
   const CLIMATIC_BOOST: Record<string, string> = {
-    Fire_Winter: "Fire", Wood_Winter: "Fire",
-    Metal_Summer: "Water", Water_Summer: "Water",
-    Earth_Summer: "Water", Wood_Summer: "Water",
+    // 冬令(亥子丑)→ 喜火解寒(覆盖五日主)
+    Fire_Winter: "Fire",
+    Wood_Winter: "Fire",
+    Water_Winter: "Fire", // 寒水须火,《穷通宝鉴》入门口诀
+    Earth_Winter: "Fire", // 冻土须火解
+    Metal_Winter: "Fire", // 寒金喜火暖
+    // 夏令(巳午未)→ 喜水润;水日主例外,以金为源
+    Fire_Summer: "Water", // 炎上须水既济
+    Wood_Summer: "Water",
+    Earth_Summer: "Water",
+    Metal_Summer: "Water",
+    Water_Summer: "Metal", // 夏水须金,而非以水救水(纠正)
   };
   const boost = CLIMATIC_BOOST[`${dayMaster}_${season}`];
-  if (boost) {
-    if (!favourable.includes(boost)) favourable.push(boost);
-    avoid = avoid.filter((e) => e !== boost);
+  if (boost && !favourable.includes(boost)) {
+    favourable.unshift(boost); // 前置,标示调候优先
   }
 
   const favClean = [...new Set(favourable)].filter(Boolean);

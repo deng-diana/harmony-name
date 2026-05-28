@@ -80,12 +80,14 @@ const EXTRA_ELEMENTS: Record<string, ElementEN> = {
   // Water — 雨/冫 部 或 字义水/黑
   雨: "Water", 霭: "Water", 霞: "Water", 霓: "Water", 汀: "Water", 玄: "Water",
   // Wood — 木/艹/竹 部 或 字义草木/风
+  // 注:`若` 在黑名单 functionWords(虚词"假设/如同"),故不收 —— 避免与黑名单互冲。
   梧: "Wood", 梅: "Wood", 桑: "Wood", 杉: "Wood", 杏: "Wood",
   柳: "Wood", 槐: "Wood", 椿: "Wood", 桥: "Wood", 棣: "Wood",
-  华: "Wood", 若: "Wood", 嘉: "Wood", 颖: "Wood",
+  华: "Wood", 嘉: "Wood", 颖: "Wood",
   芃: "Wood", 苡: "Wood", 风: "Wood",
   // Fire — 火/灬/日 部 或 字义光/赤
-  炯: "Fire", 焜: "Fire", 曙: "Fire", 暻: "Fire", 晤: "Fire", 紫: "Fire",
+  // 注:`紫` 流派分歧(红+蓝,有归火/金/水多说),故不收。
+  炯: "Fire", 焜: "Fire", 曙: "Fire", 暻: "Fire", 晤: "Fire",
   // Earth — 土/山/宀/田/石/玉/王 部 或 字义建筑/玉石
   台: "Earth", 屋: "Earth", 璧: "Earth", 玉: "Earth", 玮: "Earth",
   峦: "Earth", 嵋: "Earth", 砚: "Earth",
