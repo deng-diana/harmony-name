@@ -33,6 +33,16 @@ describe("字库 element classification", () => {
     }
   });
 
+  it("EXTRA_ELEMENTS fallback classifies common out-of-vocab chars (台/华/雨/紫)", () => {
+    expect(elementOfChar("台")).toBe("Earth");
+    expect(elementOfChar("华")).toBe("Wood");
+    expect(elementOfChar("雨")).toBe("Water");
+    expect(elementOfChar("紫")).toBe("Fire");
+    // contentious chars (颜/思/月) intentionally remain undefined (流派分歧大)
+    expect(elementOfChar("颜")).toBeUndefined();
+    expect(elementOfChar("思")).toBeUndefined();
+  });
+
   it("no 字库 character is on the HARD blacklist", () => {
     for (const el of ELEMENT_KEYS) {
       for (const c of charsOfElement(el)) {

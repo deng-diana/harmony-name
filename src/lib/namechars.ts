@@ -72,8 +72,30 @@ export function isGenderClashing(c: string, gender: "male" | "female"): boolean 
   return gender === "male" ? FEMININE_LEAN.has(c) : MASCULINE_LEAN.has(c);
 }
 
+// 字库外常用字的五行兜底(字义优先、部首其次)。
+// 用途:① 让 anatomy 不再出现空白五行(如"台/颜");② 让 verify 的忌神检查
+// 不再漏判字库外的字。仅收【无争议的常用字】;月/思/文/影/颜 等流派分歧大故不收。
+// 注意:仅影响"识别已选字的五行 + 校验",不进入候选字库(不会扩大取名先生的可选字)。
+const EXTRA_ELEMENTS: Record<string, ElementEN> = {
+  // Water — 雨/冫 部 或 字义水/黑
+  雨: "Water", 霭: "Water", 霞: "Water", 霓: "Water", 汀: "Water", 玄: "Water",
+  // Wood — 木/艹/竹 部 或 字义草木/风
+  梧: "Wood", 梅: "Wood", 桑: "Wood", 杉: "Wood", 杏: "Wood",
+  柳: "Wood", 槐: "Wood", 椿: "Wood", 桥: "Wood", 棣: "Wood",
+  华: "Wood", 若: "Wood", 嘉: "Wood", 颖: "Wood",
+  芃: "Wood", 苡: "Wood", 风: "Wood",
+  // Fire — 火/灬/日 部 或 字义光/赤
+  炯: "Fire", 焜: "Fire", 曙: "Fire", 暻: "Fire", 晤: "Fire", 紫: "Fire",
+  // Earth — 土/山/宀/田/石/玉/王 部 或 字义建筑/玉石
+  台: "Earth", 屋: "Earth", 璧: "Earth", 玉: "Earth", 玮: "Earth",
+  峦: "Earth", 嵋: "Earth", 砚: "Earth",
+  // Metal — 钅 部 或 字义白/秋/玉饰
+  钫: "Metal", 鋆: "Metal",
+};
+
 export function elementOfChar(c: string): ElementEN | undefined {
-  return charToElement.get(c);
+  // 主字库优先;字库外查兜底表(部首/字义);都没有再返回 undefined。
+  return charToElement.get(c) ?? EXTRA_ELEMENTS[c];
 }
 
 export function isHardBlacklisted(c: string): boolean {

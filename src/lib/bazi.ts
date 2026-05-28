@@ -279,6 +279,22 @@ function analyzeStrength(
     avoid = [];
   }
 
+  // 调候(climatic adjustment, 命理 #1 增强):在扶抑之上叠加气候平衡之神。
+  // 冬令的【火/木】寒冷,急需"暖"(火);夏令的【金/水/土/木】炎燥,急需"润"(水)。
+  // 若调候之神原不在喜用 → 补入;若原在忌神 → 移出(调候优先于扶抑)。
+  // 注:这是简化主流口径(未涉及湿燥细分、从格等)。
+  const season = MONTH_ZHI_SEASON[monthZhi];
+  const CLIMATIC_BOOST: Record<string, string> = {
+    Fire_Winter: "Fire", Wood_Winter: "Fire",
+    Metal_Summer: "Water", Water_Summer: "Water",
+    Earth_Summer: "Water", Wood_Summer: "Water",
+  };
+  const boost = CLIMATIC_BOOST[`${dayMaster}_${season}`];
+  if (boost) {
+    if (!favourable.includes(boost)) favourable.push(boost);
+    avoid = avoid.filter((e) => e !== boost);
+  }
+
   const favClean = [...new Set(favourable)].filter(Boolean);
   const avoidClean = [...new Set(avoid)].filter(Boolean);
 
