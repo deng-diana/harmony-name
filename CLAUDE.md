@@ -2,6 +2,12 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Session start — read this first
+
+Before doing anything else in this repo, read `SCRATCHPAD.md` and (if it exists) `SCRATCHPAD.local.md`. They hold the "where we left off" pointer, the next concrete action, and any deferred decisions from prior sessions. Re-deriving that state from `git log` is slower, lossier, and misses anything that was decided but never coded.
+
+Read order: this file → `SCRATCHPAD.local.md` (full state) → `SCRATCHPAD.md` (public log) → then start the user's task.
+
 ## Project
 
 HarmonyName generates authentic Chinese names by combining traditional BaZi (八字 / Four Pillars) astrology with AI. The core idea is a **two-layer hybrid**: a deterministic layer computes the user's Five Elements profile locally, then a generative layer uses RAG over classical poetry to produce names that match that profile.
