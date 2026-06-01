@@ -7,6 +7,86 @@
 
 ---
 
+## 2026-05-31 — v2 grounded pipeline ACTIVATED in prod + verified e2e
+
+### What landed (ops, no code change)
+
+- Confirmed Supabase migrations **005 + 006 already applied** in prod
+  (probed live: `search_poem_chunks` returns `chunk_id`,
+  `search_lines_by_chars` exists). The "blocks v2" gate was already
+  cleared — DB was ready.
+- Set `NAMING_PIPELINE_V2=true` in Vercel **production** env.
+- Redeployed prod (`vercel --prod`) → aliased to **harmonyname.com**.
+  Env var snapshots per-deployment, so the redeploy is what actually
+  flips the pipeline live.
+- **The killer feature is now live**: prod was previously serving the
+  legacy single-shot Claude path (fabrication-prone, the 中天明月色
+  class). It now runs the grounded multi-agent pipeline.
+
+### Production smoke test (the hard case, via browser e2e)
+
+Logged in as e2e user → `1995-08-12 / 午时 / Beijing / female`
+(Wood, Strong, favourable Metal·Fire·Earth). Returned **3 grounded
+names**, all anti-fabrication-clean:
+
+| Name | char (element) | Source | char really in cited line |
+|------|----------------|--------|---------------------------|
+| 张皎 zhāng jiǎo | 皎 (Metal) | 《酬殷上人秋夜山亭有赠》陈子昂(唐) | ✅ 皎皎白林秋 |
+| 张银 zhāng yín  | 银 (Metal) | 《眉妩》王沂孙(宋) | ✅ 一曲银钩小 |
+| 张堪 zhāng kān  | 堪 (Earth) | 《眉妩》王沂孙(宋) | ✅ 最堪爱 |
+
+Verified live:
+- v2 multi-stage progress shown (analyze → search → craft → verify);
+  **rescue tiers fired** ("Broadening the search…") on this hard
+  female-strong case — the same case that returned only 2 names in the
+  eval-v0 baseline. **Always-3 held in prod.**
+- Auth gating works (logged in, `/api/generate` 200 SSE,
+  `sentry-environment=vercel-production`).
+- Credit deducted **12 → 11** (billing path correct).
+- Console: zero errors.
+
+### Stripe TEST payment flow — verified e2e (same session)
+
+- Config probe (test-mode key): webhook endpoint
+  `https://harmonyname.com/api/webhooks/stripe` registered + **enabled**
+  for `checkout.session.completed`; `STRIPE_WEBHOOK_SECRET` present.
+- Live purchase e2e as the e2e user: `/buy` → STARTER ($5/10cr) →
+  Stripe hosted Checkout → test card `4242 4242 4242 4242` →
+  redirect `/app?purchase=success`. **Credits 11 → 21** (+10 landed).
+- Confirmed from Stripe side: session `cs_test_…BJd8o7…` complete/paid;
+  event `evt_…WSufxSLZ` has **`pending_webhooks=0`** (delivered + 2xx).
+- This proves the whole trust chain: checkout → signed webhook →
+  `add_credits` → balance, with Redis idempotency not blocking. The
+  success page never adds credits (by design), so the +10 IS the proof.
+- Stripe TEST flow proven; Live done same day (below).
+
+### Stripe is now LIVE — verified with a real purchase (same session)
+
+- Decision: stay on **raw Stripe** for launch (lowest fees, already built),
+  revisit a Merchant-of-Record (Stripe Managed Payments / Paddle) only if EU
+  sales grow. Operator = **UK sole trader (individual, no company)**; payouts
+  to **Revolut** (GBP, free settlement, auto-payouts).
+- Swapped all 3 prod env vars to live (`pk_live_` / `sk_live_` / live `whsec_`)
+  via a secure temp-`.env.live` flow (secrets never pasted into chat), redeployed.
+- Created a **live-mode** webhook endpoint (`checkout.session.completed` →
+  harmonyname.com/api/webhooks/stripe); endpoint reachable (curl → 400 = OK).
+- **Real-card e2e:** Visa charged £3.78 (=$5 Starter) → app credits **27 → 37**
+  (+10), live webhook delivered → `add_credits` ran. Then **refunded** the test
+  charge (status Refunded). Full live trust chain proven.
+- Legal pages drafted by 3 specialist sub-agents: `/terms`, `/privacy`,
+  `/refund` (templates w/ placeholders; need solicitor review + footer links +
+  a checkout "immediate-delivery consent" line).
+- 🐛 Found a live bug to fix next: a female-ish chart returned **2 names not 3**
+  (always-3 invariant) — same class as the eval-v0 edge case.
+
+### Doc drift spotted (now fixed)
+
+- CLAUDE.md named the by-chars RPC wrong; the real name (migration 006 +
+  retriever.ts) is **`search_lines_by_chars`**. Code was always correct;
+  only the doc was stale. Fixed — CLAUDE.md now matches the code.
+
+---
+
 ## 2026-05-28 — Code-review × xhigh + UX hot-patches + production push
 
 ### Commits

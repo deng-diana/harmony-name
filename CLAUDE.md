@@ -37,7 +37,7 @@ Database schema lives in `supabase/migrations/001_create_poems_tables.sql`, then
 
 **Required for v2 multi-agent pipeline** — run these in the Supabase SQL editor too:
 - `supabase/migrations/005_search_poem_chunks_add_chunk_id.sql` — re-creates the RPC so it also returns `chunk_id` (lineId). The v2 composer references lines by id; without this column the pipeline cannot hydrate citations.
-- `supabase/migrations/006_chunk_text_trgm_and_by_chars.sql` — installs `pg_trgm` + GIN index on `chunk_text` and adds `search_chunks_by_chars(chars text[])`, used to fetch real lines containing the favourable-element candidate characters.
+- `supabase/migrations/006_chunk_text_trgm_and_by_chars.sql` — installs `pg_trgm` + GIN index on `chunk_text` and adds `search_lines_by_chars(chars text[])`, used to fetch real lines containing the favourable-element candidate characters.
 
 ### MCP server
 
