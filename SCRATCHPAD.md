@@ -7,6 +7,38 @@
 
 ---
 
+## 2026-06-01 — always-3 invariant fixed (graded-relaxation rescue)
+
+### The bug
+v2 could return 2 names not 3 on **female + favourable-yang** charts (live repro
+邓容/邓晴方; eval miss `edge-2-female-strong-yang` → 林容/林晴 = 2). Root cause:
+the "always-3 guarantee" was never hard-enforced (final `slice(0,3)`), and the
+deterministic last-tier rescue **re-applied the SOFT gender-lean filter**
+(orchestrate.ts:284 + via `verifyCandidate`) — so when the pool's favourable-element
+chars skewed masculine, even the last resort starved and emitted < 3.
+
+### The fix
+`rescueDeterministic` now does **graded relaxation**: hard invariants always hold
+(grounding / hard-blacklist / hard `genderForbidden` 武·雄… / non-avoid element /
+surname-distinct); only the SOFT gender-lean relaxes progressively until 3 exist,
+with an honest "leans slightly yang" note on any relaxed pick. Routed through a new
+`VerifyContext.allowGenderLean` flag (keeps ONE verify code path). Extracted the pure
+rescue into `src/lib/pipeline/rescue.ts` (no API-client imports) so it's unit-testable
+at zero cost.
+
+### Verified
+- New `src/lib/pipeline/rescue.test.ts` (7 cases, TDD): **failed pre-fix** (constrained
+  chart → 晴/容 = 2), **passes post-fix** (晴/容/旭 = 3, 旭 from the relaxed pass).
+  `npx tsc` clean, ESLint clean, **55/55 tests green** (48 old + 7 new; old behavior unchanged).
+- Full eval (8 fixtures): **Always-3 = 100% (8/8)** — was 7/8; Citation 100% (24/24);
+  Element 100% (24/24). The hard fixture now yields 林容 / 林玉 / 林山.
+
+### Deferred (optional, quality not count)
+- Enrich `name-chars.json` `feminineLean` for Metal (only 4 feminine chars). The rescue
+  fix already guarantees always-3; this would just improve aesthetic supply.
+
+---
+
 ## 2026-05-31 — v2 grounded pipeline ACTIVATED in prod + verified e2e
 
 ### What landed (ops, no code change)

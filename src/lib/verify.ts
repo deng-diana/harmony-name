@@ -33,6 +33,12 @@ export interface VerifyContext {
   favourableElements: string[];
   avoidElements: string[];
   gender?: "male" | "female";
+  /**
+   * 兜底专用:为 true 时,把"软性别倾向"(masculineLean/feminineLean)从硬拦
+   * 降级为放行 —— 仅 deterministic 救援的放宽 pass 用,以保证 always-3。
+   * 硬性 genderForbidden(雄/霸/猛…)永远仍拦,不受此影响。
+   */
+  allowGenderLean?: boolean;
 }
 
 export interface VerifyResult {
@@ -96,7 +102,7 @@ export function verifyCandidate(
     // 性别倾向硬拦截:仅拦【显式标注】明显冲突的字(女名忌 masculineLean,
     // 男名忌 feminineLean)。中性字(明/光/晴 等)不在此拦 —— 那是评审先生的审美活,
     // 此处只堵确定性的明显冲突,避免误杀。
-    else if (ctx.gender && isGenderClashing(ch, ctx.gender)) {
+    else if (ctx.gender && !ctx.allowGenderLean && isGenderClashing(ch, ctx.gender)) {
       reasons.push(`「${ch}」性别倾向明显与${ctx.gender === "male" ? "男" : "女"}名相冲`);
     }
   }

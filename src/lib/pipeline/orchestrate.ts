@@ -15,14 +15,8 @@ import {
 } from "../agents/composer";
 import { verifyCandidate, type VerifyContext } from "../verify";
 import { runCritic } from "../agents/critic";
-import {
-  candidateCharsFor,
-  elementOfChar,
-  isGenderClashing,
-  isGenderForbidden,
-  isHardBlacklisted,
-  pinyinOf,
-} from "../namechars";
+import { candidateCharsFor, elementOfChar, pinyinOf } from "../namechars";
+import { rescueDeterministic } from "./rescue";
 import { COMMON_SURNAMES } from "../surnames";
 import type { NameOption } from "../../types";
 
@@ -250,59 +244,8 @@ function dedupe(
     .map(([, c]) => c);
 }
 
-/**
- * Deterministic 兜底 —— 不调 LLM,纯代码从池子里找"喜用神+性别合宜"的单字,
- * 与姓配 2 字名(姓+1)。几乎必过校验。点评/寓意用极简模板填,如实标"single-char"风格。
- * 仅在 LLM 多轮兜底后仍 <3 时启动 —— 保证 always-3。
- */
-function rescueDeterministic(
-  surnameChar: string,
-  ctx: VerifyContext,
-  needed: number,
-  isFallbackSurname = false
-): ComposerCandidate[] {
-  if (needed <= 0 || !surnameChar) return [];
-  const out: ComposerCandidate[] = [];
-  const usedChars = new Set<string>();
-  // 兜底姓时在 masterComment 末尾追加诚实提示,便于前端日志/排查;
-  // 用户不会因此误以为"系统坚信你应该姓李"。
-  const fallbackNote = isFallbackSurname
-    ? " (System-assigned surname; the AI did not converge on a candidate this round.)"
-    : "";
-
-  for (const line of ctx.pool) {
-    if (out.length >= needed) break;
-    for (const ch of line.chunkText) {
-      if (out.length >= needed) break;
-      if (usedChars.has(ch)) continue;
-      // 必须:在字库内可识别五行 且 属喜用神
-      const el = elementOfChar(ch);
-      if (!el || !ctx.favourableElements.includes(el)) continue;
-      // 排除明显不合:黑名单 / 性别禁用 / 性别倾向冲突
-      if (isHardBlacklisted(ch)) continue;
-      if (ctx.gender && isGenderForbidden(ch, ctx.gender)) continue;
-      if (ctx.gender && isGenderClashing(ch, ctx.gender)) continue;
-      // 与姓不能同字(避免 苏苏 之类)
-      if (ch === surnameChar) continue;
-
-      const candidate: ComposerCandidate = {
-        lineId: line.chunkId,
-        charSpan: ch,
-        surnameChar,
-        givenChars: [ch],
-        meanings: { [ch]: `${el} element` },
-        poeticMeaning: `Drawn from ${line.author}'s 《${line.title}》, this single-character name carries the ${el} essence with quiet classical grace.`,
-        masterComment: `A graceful single-character name (姓+1),verifiably grounded in a real ${line.dynasty}-dynasty line.${fallbackNote}`,
-      };
-      const r = verifyCandidate(candidate, ctx);
-      if (r.ok) {
-        usedChars.add(ch);
-        out.push(candidate);
-      }
-    }
-  }
-  return out;
-}
+// rescueDeterministic 已抽到 ./rescue(纯模块:不引 API 客户端,便于零成本确定性单测;
+// 见文件顶部 import)。它做分级放宽以保证 always-3 —— 详见 rescue.ts。
 
 // 把候选名"水化"成前端契约 NameOption —— 出处/原文一律来自候选池(代码),非 LLM 文本。
 function hydrate(c: ComposerCandidate, pool: ScoredPoem[]): NameOption {
