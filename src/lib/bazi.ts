@@ -80,7 +80,9 @@ const MONTH_ZHI_SEASON: Record<string, string> = {
   丑: "Winter",
 };
 
-const RELATIONSHIPS = {
+// 五行生克有向图:每个元素对应 我生(generate)/生我(generatedBy)/我克(control)/克我(controlledBy)。
+// 导出供 compatibility.ts 复用(五行人际相性建模),单一真相来源,不重复维护。
+export const RELATIONSHIPS = {
   Wood: {
     generate: "Fire",
     generatedBy: "Water",

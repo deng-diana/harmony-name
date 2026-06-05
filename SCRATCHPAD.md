@@ -7,6 +7,55 @@
 
 ---
 
+## 2026-06-05 — results page: Five-Element compatibility section ("who you vibe with")
+
+### What landed
+Replaced the decorative "Your colours / Your way / Your season" lines on the
+results page with a **Five-Element interpersonal compatibility** module that answers
+the "which tribes are your friends?" teaser the page had been posing but never
+answering. Branch `feat/element-compatibility`.
+
+### The model (reviewed by an in-loop 八字/国学 master sub-agent)
+Two **orthogonal axes**, not a one-dimensional good/bad verdict:
+- **Axis 1 — relation nature** (pure 生克, same for everyone with that day-master):
+  nourisher(生我·印) / protégé(我生·食伤) / kindred(同族·比劫) /
+  challenger(克我·官杀) / cultivator(我克·财). Stops at the "star" layer — never
+  names 正官/七杀 etc. (only have the element, not stem polarity).
+- **Axis 2 — energy P&L** (lookup against the chart's already-computed 喜忌):
+  favourable → lifts / avoid → costs / neither → easy. Best-match = favourable[0].
+
+The master killed four would-be mistakes, all folded in before coding:
+1. don't compress to one axis (the喜忌 nuance is the whole point);
+2. **比劫 must NOT get strength-flip special-casing** — drive it from 喜忌 like the
+   other four (身强 ≠ always-forbid-比劫; depends on the chosen 用神);
+3. "Muse" for 食伤 was directionally backwards → **Protégé**; "Steward/掌局者" for
+   财 too power-grabby → **Cultivator** (经营/成全, not control);
+4. **never say "相克" or "婚配"** in copy — it contradicts the喜忌-not-生克 thesis and
+   over-promises vs a day-master-only simplification. Added a single-side-view social
+   hook + honest disclaimer instead. Balanced charts soften both sides symmetrically.
+
+### Files
+- new `src/lib/compatibility.ts` (pure, reuses exported `RELATIONSHIPS` + 喜忌) +
+  `src/lib/compatibility.test.ts` (7 cases incl. the 比劫-via-喜忌 regression).
+- new `src/components/ElementCompatibility.tsx` (all English copy lives here; logic
+  module stays prose-free). Matches existing amber/stone visual language.
+- `DestinyCard.tsx`: dropped colours/way/season block + dead computations; tribes chip
+  row kept as the section header, compatibility rendered right under it.
+- `bazi.ts`: exported `RELATIONSHIPS` (was private).
+
+### Verified
+- `npx tsc` clean, ESLint clean, **62/62 tests** (55 prior, no regression + 7 new).
+- Browser e2e (1990-01-04 / Suining / female = Earth/Strong, the screenshot chart):
+  all five 生克 relations classify correctly (🔥Nourisher·Best / 🌲Challenger /
+  ⚔️Protégé / 🌊Cultivator / ⛰️Kindred); Lifts/Costs chips, summary金句 (no "clash"),
+  hook + disclaimer all render; colours/way/season confirmed gone.
+
+### Deferred (2nd pass, agreed)
+- Share card (`ElementShareCard.tsx`): add a "Best match: 🔥 Radiant Flame" line.
+- Optional: click-to-expand a tribe row for its relationship detail.
+
+---
+
 ## 2026-06-01 — always-3 invariant fixed (graded-relaxation rescue)
 
 ### The bug

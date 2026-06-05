@@ -5,6 +5,7 @@ import { ELEMENTS, type Element } from "@/lib/elements";
 import { FiveElementsChart } from "./FiveElementsChart";
 import { HighlightText } from "./HighlightText";
 import { ShareElementButton } from "./ElementShareCard";
+import { ElementCompatibility } from "./ElementCompatibility";
 
 export function DestinyCard({ baziResult }: { baziResult: BaziResult }) {
   const dayMaster = baziResult.dayMaster;
@@ -17,10 +18,6 @@ export function DestinyCard({ baziResult }: { baziResult: BaziResult }) {
     /season/i.test(p.label)
   );
 
-  const tag = (vals: string[]) => vals.filter(Boolean).join(" · ");
-  const favColours = tag(fav.map((e) => ELEMENTS[e as Element]?.colorName ?? ""));
-  const favWays = tag(fav.map((e) => ELEMENTS[e as Element]?.direction ?? ""));
-  const favSeasons = tag(fav.map((e) => ELEMENTS[e as Element]?.season ?? ""));
   const favLabel = fav
     .map((e) => `${ELEMENTS[e as Element]?.emoji ?? ""} ${e}`)
     .join(" & ");
@@ -88,37 +85,17 @@ export function DestinyCard({ baziResult }: { baziResult: BaziResult }) {
                   );
                 })}
               </ul>
-              <p className="text-xs text-stone-500 italic leading-relaxed mb-4">
+              <p className="text-xs text-stone-500 italic leading-relaxed">
                 ✦ In the ancient Five-Element cycle, energy flows from one to the
                 next — {fav.join(" & ")} are where your {dayMaster} nature
                 naturally flows.
               </p>
-              <div className="flex flex-wrap gap-x-6 gap-y-1.5 text-xs text-stone-600">
-                {favColours && (
-                  <span>
-                    <span className="text-stone-400">Your colours </span>
-                    {favColours}
-                  </span>
-                )}
-                {favWays && (
-                  <span>
-                    <span className="text-stone-400">Your way </span>
-                    {favWays}
-                  </span>
-                )}
-                {favSeasons && (
-                  <span>
-                    <span className="text-stone-400">Your season </span>
-                    {favSeasons}
-                  </span>
-                )}
-              </div>
             </div>
           )}
         </div>
       </div>
 
-      {/* ===== 五族:让人感到属于一个"族",并好奇朋友是哪族 ===== */}
+      {/* ===== 五族 + 相性:chip 行抛出"谁是你的朋友?",下方相性区块给出答案 ===== */}
       <div className="px-8 md:px-10 pb-8">
         <p className="text-[11px] text-stone-400 uppercase tracking-wider text-center mb-3">
           The five tribes — which are your friends?
@@ -143,6 +120,12 @@ export function DestinyCard({ baziResult }: { baziResult: BaziResult }) {
             );
           })}
         </div>
+
+        <ElementCompatibility
+          dayMaster={dayMaster}
+          favourableElements={baziResult.favourableElements}
+          avoidElements={baziResult.avoidElements}
+        />
       </div>
     </section>
   );
