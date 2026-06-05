@@ -7,6 +7,60 @@
 
 ---
 
+## 2026-06-05 — landing page (`/`) copy + content overhaul (P0+P1)
+
+### What landed
+Rewrote the landing page content/copy to be honest, resonant, and grounded in what
+the product actually does — while **keeping the original refined ink-landscape hero
+visual** (`/hero-bg.png`). Reviewed by an in-loop top cultural-product UI/UX designer
+sub-agent (refs: The Met / Google Arts & Culture / NYT / Calm).
+
+### The story behind the copy
+- **Old copy sold nothing true:** hero was "5,000 years of wisdom + modern AI" (every
+  competitor's line); the real moat — *every name's characters are verified to come from
+  a real classical poem, by code; fabrication is structurally impossible* — was nowhere.
+  And a **fake decorative example** ("Forest Rain Lily") was used to sell a product whose
+  whole point is "never invented" — self-defeating. Designer flagged this as the #1 trust
+  hardfix.
+- **New narrative (7 sections):** hero → the ache (for non-native speakers who want a name
+  that *means something*) → **a real generated name** (reuses `NameCard`, see below) →
+  3 honest pillars (真/時/解, no robot emoji) → 3-step how-it-works → Five-Element self
+  teaser (dark ink section) → trust & pricing (3 free, auto-refund on failure, packs from
+  $5) + honest disclaimer → footer with **real** `/privacy /terms /refund` links (were `#`).
+- **Hero title — iterated with the user.** "A Chinese name with a real source" undersold
+  the *match-to-you* half. Final (UX-writer + 中文系 framing): **"A name that fits you —
+  down to the hour you were born."** The "hour" concretely signals Bāzì depth (needs exact
+  birth time) without mysticism; subhead carries the rational proof (Four Pillars + real
+  poetry, "never invented"). Hero kept clean over the landscape — removed the big 林 glyph /
+  `lín·木·Wood` line / "↓ see a real one" arrow at the user's request (they clashed with the
+  lone figure in the ink painting).
+
+### Files
+- `src/app/page.tsx` — full rewrite (kept hero `/hero-bg.png` + a soft cream scrim for text
+  legibility; kept the dark ink "Five-Element self" section visual).
+- `src/components/NameCard.tsx` — new `readOnly?: boolean` (+ optional play props) so the
+  real sample card renders safely on the public page (hides Volume2/Share/Save which need
+  auth/context). Sample = **`张皎`** (皎=Metal, from 《酬殷上人秋夜山亭有赠》陈子昂 唐, real line
+  「皎皎白林秋」, prod-verified) — a real one, never a fake.
+- `src/components/StickyHeader.tsx` — CTA "Find my name" + a "Sign in" link; dropped hover scale.
+- `src/app/layout.tsx` — richer metadata + OpenGraph/Twitter (OG image `/og.png` is a P3 TODO).
+- `src/app/globals.css` — defined the `animate-fade-in / fade-in-up / delay-*` keyframes that
+  were referenced but never existed (so entrance animations actually run) + `prefers-reduced-motion`.
+
+### Verified
+- `npx tsc` clean, ESLint clean, **62/62 tests** (no regression). DOM-level e2e on `/`:
+  hero renders over the landscape image, all sections + real card + correct CTA/legal links,
+  trust hardfixes confirmed (no fake example / no robot emoji / no mysticism / no dead links).
+  (watchr screenshots returned blank all session — a capture limitation, not a render bug.)
+
+### Deferred (P2/P3)
+- P2 visual polish: tighter type scale, de-card-ify, 朱砂 seal + paper texture, ink entrance
+  on hero. P3: real 1200×630 OG image, deeper mobile pass.
+- Other sections still use the new editorial layout; if the user wants the *original* card
+  grids (Why-Choose / How-It-Works) restored with only copy swapped, that's a follow-up.
+
+---
+
 ## 2026-06-05 — results page: Five-Element compatibility section ("who you vibe with")
 
 ### What landed

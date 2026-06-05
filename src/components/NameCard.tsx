@@ -9,10 +9,12 @@ import { SaveNameButton } from "@/components/SaveNameButton";
 interface NameCardProps {
   name: NameOption;
   index: number;
-  playingNameIndex: number | null;
-  onPlayName: (hanzi: string, index: number) => void;
+  playingNameIndex?: number | null;
+  onPlayName?: (hanzi: string, index: number) => void;
   archetype?: { title: string; subtitle: string };
   defaultSaved?: boolean;
+  /** 落地页等未登录/纯展示场景:隐藏发音/分享/收藏等交互按钮(点击会依赖 auth/context 而报错)。 */
+  readOnly?: boolean;
 }
 
 export function NameCard({
@@ -22,6 +24,7 @@ export function NameCard({
   onPlayName,
   archetype,
   defaultSaved,
+  readOnly,
 }: NameCardProps) {
   const cleanHanzi = name.hanzi.replace(/[{}]/g, "");
 
@@ -40,19 +43,23 @@ export function NameCard({
             <span className="text-xl font-medium tracking-wide font-serif">
               {name.pinyin}
             </span>
-            <button
-              onClick={() => onPlayName(name.hanzi, index)}
-              className={`transition-all ${
-                playingNameIndex === index
-                  ? "text-stone-900 animate-pulse"
-                  : "hover:text-stone-800 cursor-pointer"
-              }`}
-              aria-label="Play name pronunciation"
-            >
-              <Volume2 className="w-5 h-5" />
-            </button>
-            <ShareNameButton name={name} archetype={archetype} />
-            <SaveNameButton name={name} initialSaved={defaultSaved} />
+            {!readOnly && (
+              <>
+                <button
+                  onClick={() => onPlayName?.(name.hanzi, index)}
+                  className={`transition-all ${
+                    playingNameIndex === index
+                      ? "text-stone-900 animate-pulse"
+                      : "hover:text-stone-800 cursor-pointer"
+                  }`}
+                  aria-label="Play name pronunciation"
+                >
+                  <Volume2 className="w-5 h-5" />
+                </button>
+                <ShareNameButton name={name} archetype={archetype} />
+                <SaveNameButton name={name} initialSaved={defaultSaved} />
+              </>
+            )}
           </div>
           <div className="mt-6">
             <p className="text-lg md:text-xl text-stone-800 font-serif italic leading-relaxed">

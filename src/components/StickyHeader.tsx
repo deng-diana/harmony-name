@@ -36,11 +36,19 @@ export function StickyHeader() {
           </span>
         </div>
 
-        <Link href="/app">
-          <button className="px-6 py-2.5 rounded-full bg-stone-900 text-white hover:bg-stone-800 transition-all duration-300 font-medium text-sm shadow-lg hover:shadow-xl hover:-translate-y-0.5">
-            Find My Name
-          </button>
-        </Link>
+        <div className="flex items-center gap-5">
+          <Link
+            href="/login"
+            className="text-sm text-stone-600 hover:text-stone-900 transition-colors hidden sm:inline"
+          >
+            Sign in
+          </Link>
+          <Link href="/app">
+            <button className="px-6 py-2.5 rounded-full bg-stone-900 text-white hover:bg-stone-800 transition-colors duration-300 font-medium text-sm shadow-lg">
+              Find my name
+            </button>
+          </Link>
+        </div>
       </nav>
     </header>
   );
