@@ -12,7 +12,7 @@
  */
 
 import { getOpenAI } from "./openai";
-import { supabaseAdmin } from "./supabaseAdmin";
+import { getSupabaseAdmin } from "./supabaseAdmin";
 import { redis } from "./redis";
 
 // ============================================================
@@ -101,7 +101,7 @@ export async function searchPoems(
   //   LIMIT 10
   //
   // 但我们不需要手写 SQL，Supabase 的 rpc() 帮我们调用之前定义的函数
-  const { data, error } = await supabaseAdmin.rpc("search_poem_chunks", {
+  const { data, error } = await getSupabaseAdmin().rpc("search_poem_chunks", {
     query_embedding: JSON.stringify(queryVector),
     match_threshold: 0.25,   // 相似度低于 0.25 的不要 (太不相关)
     match_count: topK,
@@ -167,7 +167,7 @@ export async function searchLinesByChars(
     if (hit) return hit;
   }
 
-  const { data, error } = await supabaseAdmin.rpc("search_lines_by_chars", {
+  const { data, error } = await getSupabaseAdmin().rpc("search_lines_by_chars", {
     chars: uniq,
     match_count: topK,
   });

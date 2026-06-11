@@ -9,7 +9,7 @@
  *  2. 必须【幂等】:Stripe 可能重试同一事件,用 event.id 去重,避免重复加分。
  */
 import { stripe } from "@/lib/stripe";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { redis } from "@/lib/redis";
 import type Stripe from "stripe";
 
@@ -53,7 +53,7 @@ export async function POST(request: Request) {
     const credits = Number(session.metadata?.credits);
 
     if (userId && credits > 0) {
-      const { error } = await supabaseAdmin.rpc("add_credits", {
+      const { error } = await getSupabaseAdmin().rpc("add_credits", {
         p_user_id: userId,
         p_amount: credits,
       });

@@ -16,7 +16,8 @@
 import "dotenv/config";
 import { config as dotenvConfig } from "dotenv";
 dotenvConfig({ path: ".env.local" });
-import { supabaseAdmin } from "../src/lib/supabaseAdmin";
+import { getSupabaseAdmin } from "../src/lib/supabaseAdmin";
+const supabaseAdmin = getSupabaseAdmin();
 import { getOpenAI } from "../src/lib/openai";
 
 interface CuratedEntry {

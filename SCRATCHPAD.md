@@ -37,6 +37,20 @@ into Preview — use TEST keys or leave unset (code degrades gracefully). With t
 fix the build goes green even without Preview vars; vars are only needed for Preview's
 generate feature to actually run.
 
+### Follow-up commit — supabaseAdmin was the second build mine (whack-a-mole)
+First lazy-init commit (36d4c01) fixed openai/claude but the next Preview build failed with
+`supabaseUrl is required.` — `supabaseAdmin.ts` also constructed `createClient(URL!, …)` at
+module top level. Did a **full audit** of every module-level client construction this time:
+- Now lazy: `getOpenAI` / `getClaude` / `getSupabaseAdmin` (all construct inside a fn).
+- Already safe (guarded → null, no throw): `redis`, `stripe`, `ratelimit`.
+- `Sentry.init` is a no-op when DSN missing (no throw).
+- All `createClient()` call sites use the `supabase/{server,client}.ts` function wrappers
+  (run at request time, not at import) → build's page-data collection never invokes them.
+Converted `supabaseAdmin` → `getSupabaseAdmin()` + 4 app call sites + 3 data scripts.
+Couldn't run `next build` locally to prove it — macOS TCC blocks Turbopack from reading
+`~/Desktop` (`Operation not permitted`); Vercel (Linux) is unaffected. Verified via tsc +
+62/62 tests + exhaustive import-time audit instead.
+
 ---
 
 ## 2026-06-05 — landing page (`/`) copy + content overhaul (P0+P1)

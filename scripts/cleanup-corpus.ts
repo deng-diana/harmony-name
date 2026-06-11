@@ -15,7 +15,8 @@
  *   npx tsx scripts/cleanup-corpus.ts            # DRY-RUN(强烈推荐先看)
  *   npx tsx scripts/cleanup-corpus.ts --apply    # 真执行
  */
-import { supabaseAdmin } from "../src/lib/supabaseAdmin";
+import { getSupabaseAdmin } from "../src/lib/supabaseAdmin";
+const supabaseAdmin = getSupabaseAdmin();
 
 const APPLY = process.argv.includes("--apply");
 const SOURCES = ["婉约精选", "诗经精选"];
