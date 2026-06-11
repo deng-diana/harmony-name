@@ -11,7 +11,7 @@
  * 设计要点: "能不能开始"用 HTTP 状态码(401/400/402)同步返回;
  *           真正的进度/结果再走 SSE 流。
  */
-import { claude } from "@/lib/claude";
+import { getClaude } from "@/lib/claude";
 import { searchPoems } from "@/lib/retriever";
 import { generateRequestSchema } from "@/lib/schemas";
 import { createClient } from "@/lib/supabase/server";
@@ -214,7 +214,7 @@ export async function POST(request: Request) {
           recommendedNameLength,
         });
 
-        const message = await claude.messages.create({
+        const message = await getClaude().messages.create({
           model: "claude-sonnet-4-20250514",
           max_tokens: 4096,
           temperature: 0.7,

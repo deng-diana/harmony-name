@@ -7,6 +7,38 @@
 
 ---
 
+## 2026-06-11 — fix Vercel Preview build failure + RLS hardening
+
+### What landed (on `feat/element-compatibility`)
+**1. Build fix — lazy-init the AI clients.** PR #1's Preview deployment was failing
+the build with `Missing credentials ... OPENAI_API_KEY`. Root cause: `openai.ts` and
+`claude.ts` ran `new OpenAI()` / `new Anthropic()` at **module top level**, which
+executes during `next build`'s "Collecting page data" step. All 12 Vercel env vars are
+scoped to **Production only** → the Preview build (PR branch) had no `OPENAI_API_KEY` →
+constructor threw → build crashed. (Prod was fine — it has the Production vars.)
+Converted both to lazy singletons (`getOpenAI()` / `getClaude()`), mirroring the existing
+`stripe.ts` null-guard pattern. Build no longer depends on secrets; a missing key now only
+fails the single request (caught by `/api/generate` → credit refund), never the build.
+Updated all 6 call sites (retriever, composer, critic, generate route, enrich-corpus script).
+
+**2. RLS hardening — `007_enable_rls_on_poems.sql`.** `poems` / `poem_chunks` were built
+in 001 (before auth/RLS existed in 002) and were the only public tables without RLS →
+Security Advisor ERROR `rls_disabled_in_public`. New migration enables RLS, **no policy**:
+both are read only via `supabaseAdmin` (service_role bypasses RLS), so deny-by-default for
+anon/authenticated is safe. **Must be run manually in the Supabase SQL editor.**
+
+### Verified
+`npx tsc` clean (only a pre-existing implicit-any in enrich-corpus remains), 62/62 tests pass.
+
+### Operational follow-up (user action, not code)
+Add env vars to Vercel **Preview** env (currently Production-only): at minimum
+`OPENAI_API_KEY` + `CLAUDE_API_KEY` + the Supabase trio. **Do NOT** copy Stripe LIVE keys
+into Preview — use TEST keys or leave unset (code degrades gracefully). With the lazy-init
+fix the build goes green even without Preview vars; vars are only needed for Preview's
+generate feature to actually run.
+
+---
+
 ## 2026-06-05 — landing page (`/`) copy + content overhaul (P0+P1)
 
 ### What landed

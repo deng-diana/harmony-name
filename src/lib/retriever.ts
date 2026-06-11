@@ -11,7 +11,7 @@
  *   3. 返回 top-K 诗句 + 元数据 (标题、作者、朝代)
  */
 
-import { openai } from "./openai";
+import { getOpenAI } from "./openai";
 import { supabaseAdmin } from "./supabaseAdmin";
 import { redis } from "./redis";
 
@@ -79,7 +79,7 @@ export async function searchPoems(
   // 不连累并联的"按字检索"(buildVerifiedPool 用 Promise.all)。
   let queryVector: number[];
   try {
-    const embeddingResponse = await openai.embeddings.create({
+    const embeddingResponse = await getOpenAI().embeddings.create({
       model: "text-embedding-3-small",
       input: query,
       encoding_format: "float",
