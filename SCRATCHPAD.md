@@ -7,6 +7,39 @@
 
 ---
 
+## 2026-06-12 — audit P1+P2 fixes (+ 3-reviewer pass) 🟢 LIVE
+
+Followed the P0 hardening by implementing the **P1/P2** findings from the same audit,
+then ran a **senior 3-reviewer code review** (code / 八字 / 取名) over the diff,
+applied all 8 should-fixes, and merged. PR #4 (`68b74e0`), **75/75 tests**, reviewer
+verdict **ship-it (0 blockers)**.
+
+**Naming quality:** removed 18 器物/谐音 chars (灯钗钿镜铜沼渔… + 梨/幽/圣); gender-tag
+fixes; 凌/诗/真/琴 → 忌神 detection. New verify gates: 叠字 / 给定字==姓 / **指定姓必须吻合**
+(姓是事实) / **名人撞名** (王维/李白) / **谐音 — 带声调** (吴晴=无情 拦,吴清/石毅 不误杀).
+Data-self-consistency + GOLD-passes-verify + homophone/celebrity tests added.
+
+**Diversity (王维 同质化):** pool per-poem ≤2 / per-author ≤4; final-3 prefer distinct poems.
+
+**Pipeline robustness:** `safeComposer` (一次 API 故障 → 落入下一兜底层,always-3 不破);
+redis get/set 包安全; CACHE_VERSION v4; poemCache FIFO 上限; **impliedWord 解析修复**
+(此前 critic 读到的恒为 undefined); masterComment 诚实标注保留; compatibility fail-fast.
+
+**Frontend:** SSE **AbortController**(卸载/Start-over/重提交都取消) + **生成中禁用提交**
+(此前可双提交→双扣积分); router.refresh 移入 finally; useCitySearch/useTTS 竞态修复.
+
+**Prompts:** 修自相矛盾示例(清明/萱/涵虚/苍山 当 GOLD 却过不了自家闸门).
+
+**BaZi (P2):** 三合/三会加权(2.0/1.5 保守) + 月支六冲减月令乘数;**从弱格检测**(ratio<0.12
+且无本气通根 → Balanced+顺势克泄,安全软映射不激进翻转;调候印星不入从弱喜用);
+**调候降级保留**(寒木向阳:冲突的调候之神进 favourable 末位而非丢弃);分钟 threading.
+
+**Deferred (gitignored `docs/audit-2026-06-12.md`):** a11y label 关联、SaveNameButton/
+ProfileTabs 防崩、通关用神/财多身弱排序、未知时辰+城市的北京换算、compatibility 文案封顶。
+低优先,按真实反馈再清。
+
+---
+
 ## 2026-06-12 — full audit + P0 security/payment hardening 🟢 LIVE
 
 Ran a 5-expert audit (backend-security / pipeline / frontend code review + 八字 /
