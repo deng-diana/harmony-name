@@ -233,7 +233,10 @@ function dedupe(
   const bestByKey = new Map<string, ComposerCandidate>();
   const firstIndexByKey = new Map<string, number>();
   cands.forEach((c, i) => {
-    const key = c.surnameChar + c.givenChars.join("");
+    // 按【给定名】去重(非全名)。auto 选姓模式下,取名先生会给同一个名(如「明月」)
+    // 配不同姓 → 全名不同但名相同,用户拿到的其实是"同一个名字"。按给定名去重可逼出
+    // 3 个【真正不同】的名(不足则兜底补齐 always-3)。specified 姓模式下姓相同,等价。
+    const key = c.givenChars.join("");
     const prev = bestByKey.get(key);
     if (!prev || quality(c) > quality(prev)) bestByKey.set(key, c);
     if (!firstIndexByKey.has(key)) firstIndexByKey.set(key, i);
