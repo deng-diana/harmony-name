@@ -20,8 +20,11 @@ import { createClient } from "@/lib/supabase/server";
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
-  // 允许通过 ?next=/somewhere 指定登录后去向,默认回 /app
-  const next = searchParams.get("next") ?? "/app";
+  // 允许通过 ?next=/somewhere 指定登录后去向,默认回 /app。
+  // 【安全】只接受【站内相对路径】:必须以单个 "/" 开头,排除 "//" 和 "/\\"(协议相对 URL)。
+  // 否则 `${origin}${next}` 会被 ?next=@evil.com / //evil.com 利用成登录后开放重定向(钓鱼)。
+  const rawNext = searchParams.get("next") ?? "/app";
+  const next = /^\/(?![/\\])/.test(rawNext) ? rawNext : "/app";
 
   if (code) {
     const supabase = await createClient();
