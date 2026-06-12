@@ -82,7 +82,15 @@ export async function POST(request: Request) {
   }
 
   // ===== ② 校验请求体 =====
-  const body = await request.json();
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return Response.json(
+      { error: "Invalid request", code: "VALIDATION_ERROR" },
+      { status: 400 }
+    );
+  }
   const parseResult = generateRequestSchema.safeParse(body);
   if (!parseResult.success) {
     return Response.json(

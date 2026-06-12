@@ -57,6 +57,11 @@ export async function runNamingPipeline(
 ): Promise<PipelineResult> {
   const onProgress = opts.onProgress ?? (() => {});
 
+  // 时间预算守卫:route 的 maxDuration=300s,瘦命格最坏路径会串行 4 次 Composer
+  // (实测尾延迟 460s)→ 被平台 300s 强杀 = SSE 断流 + 扣分不退。设软截止线,超过后
+  // 跳过后续【慢 LLM 兜底层】,直接走 ③.6 纯代码救援(瞬时、保 always-3)。
+  const deadlineMs = Date.now() + 210_000; // 留 ~90s 给 hydrate/归档/网络余量
+
   // ① 候选字 + 候选池
   onProgress(1, TOTAL, "Searching real classical lines…");
   const candidateChars = candidateCharsFor(input.favourableElements, input.gender);
@@ -114,7 +119,8 @@ export async function runNamingPipeline(
   // ③.5 兜底:重生成后仍 <3 → 大幅拓宽检索(更多候选字×更多真句),再要一轮【双字名】。
   // 喜用神受限的命盘(如女命忌水木、喜用全偏阳)候选稀,但拓宽后双字成词名通常仍能凑齐;
   // 【不再强制单字名】—— 单字名质量塌方(国学评审 2026-06-12),只留给 ③.6 确定性兜底。
-  if (verified.length < 3) {
+  // deadline 守卫:已逼近 300s 上限就跳过这层慢 LLM 兜底,落到 ③.6 纯代码救援。
+  if (verified.length < 3 && Date.now() < deadlineMs) {
     onProgress(3, TOTAL, "Broadening the search for more options…");
     const broader = await buildVerifiedPool({
       favourableChars: candidateChars,
@@ -136,7 +142,8 @@ export async function runNamingPipeline(
 
   // ③.5b 单字补缺(仅当双字拓宽后仍 <3):喜用神太窄、双字成词名确实凑不齐时,才允许
   // 单字名(姓+1)补到 3 个 —— 双字已优先,单字是"万不得已"。此层放开 requireTwoGivenChars。
-  if (verified.length < 3) {
+  // deadline 守卫:同上,逼近超时就跳过,交给 ③.6 纯代码救援保 always-3。
+  if (verified.length < 3 && Date.now() < deadlineMs) {
     const singleFeedback =
       `Still under 3 valid names — the favourable elements are too constrained for more ` +
       `two-character names. Now produce SINGLE-character given names: surname + ONE favourable, ` +
