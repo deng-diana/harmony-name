@@ -17,11 +17,12 @@ const poem = (chunkId: number, chunkText: string): ScoredPoem => ({
 const ctx = (over: Partial<VerifyContext> = {}): VerifyContext => ({
   pool: [
     poem(1, "维师尚父，时维鹰扬。凉彼武王，四伐大商，会朝清明。"),
-    poem(6, "清培"),
+    poem(6, "清岩"),
     poem(7, "清兮"),
     poem(8, "江清"),
     poem(9, "甘露"),
     poem(10, "江清溪"),
+    poem(11, "清昊"),
   ],
   favourableElements: ["Water", "Fire"],
   avoidElements: ["Earth"],
@@ -68,7 +69,7 @@ describe("verifyCandidate", () => {
 
   it("rejects a name carrying an avoid element (忌神)", () => {
     const r = verifyCandidate(
-      { lineId: 6, charSpan: "清培", surnameChar: "周", givenChars: ["清", "培"] },
+      { lineId: 6, charSpan: "清岩", surnameChar: "周", givenChars: ["清", "岩"] },
       ctx()
     );
     expect(r.ok).toBe(false);
@@ -116,21 +117,21 @@ describe("verifyCandidate", () => {
     expect(r.reasons.join()).toMatch(/过长/);
   });
 
-  it("rejects a masculine-coded char in a FEMALE name (郓明: 明 is masculine-lean)", () => {
+  it("rejects a masculine-coded char in a FEMALE name (郓昊: 昊 is masculine-lean)", () => {
     const r = verifyCandidate(
-      { lineId: 1, charSpan: "清明", surnameChar: "郓", givenChars: ["清", "明"] },
+      { lineId: 11, charSpan: "清昊", surnameChar: "郓", givenChars: ["清", "昊"] },
       ctx({ gender: "female" })
     );
     expect(r.ok).toBe(false);
     expect(r.reasons.join()).toMatch(/性别倾向明显与女名相冲/);
   });
 
-  it("does NOT reject the same masculine-coded char in a MALE name (郓明 ok for male)", () => {
+  it("does NOT reject the same masculine-coded char in a MALE name (郓昊 ok for male)", () => {
     const r = verifyCandidate(
-      { lineId: 1, charSpan: "清明", surnameChar: "郓", givenChars: ["清", "明"] },
-      ctx({ gender: "male" }) // 明 is masculine-lean → fine for males
+      { lineId: 11, charSpan: "清昊", surnameChar: "郓", givenChars: ["清", "昊"] },
+      ctx({ gender: "male" }) // 昊 is masculine-lean → fine for males
     );
-    // 明 is Fire (favourable here), 清 Water (favourable); no clash for male
+    // 昊 is Fire (favourable here), 清 Water (favourable); no clash for male
     expect(r.reasons.join()).not.toMatch(/性别倾向/);
   });
 

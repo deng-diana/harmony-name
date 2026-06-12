@@ -57,7 +57,7 @@ export interface ScoredPoem {
 // CACHE_VERSION:ScoredPoem schema 变更时 bump。当前 v2 = chunkId 字段加入后的版本;
 // 旧版 v1 缓存条目缺 chunkId → buildVerifiedPool 会把整组 semantic-arm 结果过滤掉。
 // 任何对 ScoredPoem 形状的破坏性变更都必须 bump 此版本号。
-const CACHE_VERSION = "v2";
+const CACHE_VERSION = "v3";
 const poemCache = new Map<string, ScoredPoem[]>();
 
 export async function searchPoems(

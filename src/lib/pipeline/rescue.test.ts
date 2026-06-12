@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { rescueDeterministic } from "./rescue";
 import type { VerifyContext } from "../verify";
 import type { ScoredPoem } from "../retriever";
-import { elementOfChar, isGenderForbidden } from "../namechars";
+import { elementOfChar, isGenderForbidden, genderLeanOf } from "../namechars";
 
 const poem = (chunkId: number, chunkText: string): ScoredPoem => ({
   chunkId,
@@ -17,11 +17,11 @@ const poem = (chunkId: number, chunkText: string): ScoredPoem => ({
 });
 
 // 还原"难例":女命 + 喜用神 = 火/土,但池子里的火/土字大多偏阳。
-//   旭/景(火,masculineLean) 峰/岳(土,masculineLean) —— 严格性别下会被拦
+//   昊/景(火,masculineLean) 峰/岳(土,masculineLean) —— 严格性别下会被拦
 //   晴(火,中性) 容(土,feminineLean) —— 只有这 2 个能过严格关
 // 严格兜底 → 只出 2 个(bug);分级放宽后火/土偏阳字可用 → 凑足 3。
 const hardCtx: VerifyContext = {
-  pool: [poem(1, "旭景晴"), poem(2, "峰岳容")],
+  pool: [poem(1, "昊景晴"), poem(2, "峰岳容")],
   favourableElements: ["Fire", "Earth"],
   avoidElements: [],
   gender: "female",
@@ -64,14 +64,15 @@ describe("rescueDeterministic — always-3 invariant on hard female charts", () 
   });
 
   it("the relaxed pass actually fired (a soft-masculine favourable char was used)", () => {
-    // 旭 is Fire + masculineLean; it can only appear if the relaxed pass ran.
+    // strict supply is only 晴/容 (2); reaching 3 forces the relaxed pass to use a
+    // masculineLean favourable char (昊/景/峰/岳) for the female chart.
     const chars = rescueDeterministic("林", hardCtx, 3).flatMap((c) => c.givenChars);
-    expect(chars).toContain("旭");
+    expect(chars.some((ch) => genderLeanOf(ch) === "masculine")).toBe(true);
   });
 
   it("strict-only charts are unaffected — abundant feminine supply still yields 3", () => {
     const easyCtx: VerifyContext = {
-      pool: [poem(10, "晴容晗"), poem(11, "彤昕暖")], // all Fire/Earth feminine/neutral
+      pool: [poem(10, "晴容彤"), poem(11, "暖映岚")], // all Fire/Earth feminine/neutral
       favourableElements: ["Fire", "Earth"],
       avoidElements: [],
       gender: "female",
