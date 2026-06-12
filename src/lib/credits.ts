@@ -8,7 +8,7 @@
  *   - add_credits():    仅 service_role 可调,所以退款必须用 supabaseAdmin
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { supabaseAdmin } from "./supabaseAdmin";
+import { getSupabaseAdmin } from "./supabaseAdmin";
 
 export type DeductResult =
   | { ok: true; remaining: number }
@@ -38,7 +38,7 @@ export async function deductCredit(
  * 故意吞掉错误并记日志:退款失败不应再把异常抛给用户(钱的问题宁可记录后人工兜底)。
  */
 export async function refundCredit(userId: string): Promise<void> {
-  const { error } = await supabaseAdmin.rpc("add_credits", {
+  const { error } = await getSupabaseAdmin().rpc("add_credits", {
     p_user_id: userId,
     p_amount: 1,
   });

@@ -31,3 +31,50 @@ nextjs-portal {
   box-shadow: 0 4px 16px rgba(235, 220, 195, 0.4),
     0 8px 24px rgba(235, 220, 195, 0.2);
 }
+
+/* 入场动效 —— 这些 utility 之前被引用但从未定义,动画其实没生效。
+   现补上,克制(短位移 + ease-out),并尊重 prefers-reduced-motion。 */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.8s ease-out both;
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.7s ease-out both;
+}
+
+.delay-100 {
+  animation-delay: 0.1s;
+}
+.delay-200 {
+  animation-delay: 0.2s;
+}
+.delay-300 {
+  animation-delay: 0.3s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-in,
+  .animate-fade-in-up {
+    animation: none;
+  }
+}

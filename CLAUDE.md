@@ -39,6 +39,9 @@ Database schema lives in `supabase/migrations/001_create_poems_tables.sql`, then
 - `supabase/migrations/005_search_poem_chunks_add_chunk_id.sql` — re-creates the RPC so it also returns `chunk_id` (lineId). The v2 composer references lines by id; without this column the pipeline cannot hydrate citations.
 - `supabase/migrations/006_chunk_text_trgm_and_by_chars.sql` — installs `pg_trgm` + GIN index on `chunk_text` and adds `search_lines_by_chars(chars text[])`, used to fetch real lines containing the favourable-element candidate characters.
 
+**Security hardening** — run in the Supabase SQL editor too:
+- `supabase/migrations/007_enable_rls_on_poems.sql` — enables RLS on `poems` / `poem_chunks` (built in 001, before auth existed, so they were the only public tables without RLS — Security Advisor flagged `rls_disabled_in_public`). No policy is added: both tables are read **only** via `supabaseAdmin` (service_role, which bypasses RLS), so deny-by-default for anon/authenticated is safe and closes the warning.
+
 ### MCP server
 
 `mcp/server.ts` exposes the BaZi calculator as a `calculate_bazi` tool over stdio for Claude Desktop. Test it standalone with `npx -y tsx mcp/server.ts` (it imports `../src/lib/bazi`).

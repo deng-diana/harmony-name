@@ -6,7 +6,7 @@
  * 叠韵、出处雅俗),给 6 个候选打分、挑最好的 3 个、写一句点评。
  * 它【不碰事实】—— 不判断字在不在句里(那是代码的事)。
  */
-import { claude } from "../claude";
+import { getClaude } from "../claude";
 import type { ScoredPoem } from "../retriever";
 import type { ComposerCandidate, ComposerProfile } from "./composer";
 import { pinyinOf } from "../namechars";
@@ -74,7 +74,7 @@ ${list}
 
 Score every candidate and return ONLY the JSON.`.trim();
 
-  const message = await claude.messages.create({
+  const message = await getClaude().messages.create({
     model: MODEL,
     max_tokens: 2048,
     temperature: 0.4,

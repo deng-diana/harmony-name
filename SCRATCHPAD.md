@@ -7,6 +7,155 @@
 
 ---
 
+## 2026-06-11 — fix Vercel Preview build failure + RLS hardening
+
+### What landed (on `feat/element-compatibility`)
+**1. Build fix — lazy-init the AI clients.** PR #1's Preview deployment was failing
+the build with `Missing credentials ... OPENAI_API_KEY`. Root cause: `openai.ts` and
+`claude.ts` ran `new OpenAI()` / `new Anthropic()` at **module top level**, which
+executes during `next build`'s "Collecting page data" step. All 12 Vercel env vars are
+scoped to **Production only** → the Preview build (PR branch) had no `OPENAI_API_KEY` →
+constructor threw → build crashed. (Prod was fine — it has the Production vars.)
+Converted both to lazy singletons (`getOpenAI()` / `getClaude()`), mirroring the existing
+`stripe.ts` null-guard pattern. Build no longer depends on secrets; a missing key now only
+fails the single request (caught by `/api/generate` → credit refund), never the build.
+Updated all 6 call sites (retriever, composer, critic, generate route, enrich-corpus script).
+
+**2. RLS hardening — `007_enable_rls_on_poems.sql`.** `poems` / `poem_chunks` were built
+in 001 (before auth/RLS existed in 002) and were the only public tables without RLS →
+Security Advisor ERROR `rls_disabled_in_public`. New migration enables RLS, **no policy**:
+both are read only via `supabaseAdmin` (service_role bypasses RLS), so deny-by-default for
+anon/authenticated is safe. **Must be run manually in the Supabase SQL editor.**
+
+### Verified
+`npx tsc` clean (only a pre-existing implicit-any in enrich-corpus remains), 62/62 tests pass.
+
+### Operational follow-up (user action, not code)
+Add env vars to Vercel **Preview** env (currently Production-only): at minimum
+`OPENAI_API_KEY` + `CLAUDE_API_KEY` + the Supabase trio. **Do NOT** copy Stripe LIVE keys
+into Preview — use TEST keys or leave unset (code degrades gracefully). With the lazy-init
+fix the build goes green even without Preview vars; vars are only needed for Preview's
+generate feature to actually run.
+
+### Follow-up commit — supabaseAdmin was the second build mine (whack-a-mole)
+First lazy-init commit (36d4c01) fixed openai/claude but the next Preview build failed with
+`supabaseUrl is required.` — `supabaseAdmin.ts` also constructed `createClient(URL!, …)` at
+module top level. Did a **full audit** of every module-level client construction this time:
+- Now lazy: `getOpenAI` / `getClaude` / `getSupabaseAdmin` (all construct inside a fn).
+- Already safe (guarded → null, no throw): `redis`, `stripe`, `ratelimit`.
+- `Sentry.init` is a no-op when DSN missing (no throw).
+- All `createClient()` call sites use the `supabase/{server,client}.ts` function wrappers
+  (run at request time, not at import) → build's page-data collection never invokes them.
+Converted `supabaseAdmin` → `getSupabaseAdmin()` + 4 app call sites + 3 data scripts.
+Couldn't run `next build` locally to prove it — macOS TCC blocks Turbopack from reading
+`~/Desktop` (`Operation not permitted`); Vercel (Linux) is unaffected. Verified via tsc +
+62/62 tests + exhaustive import-time audit instead.
+
+---
+
+## 2026-06-05 — landing page (`/`) copy + content overhaul (P0+P1)
+
+### What landed
+Rewrote the landing page content/copy to be honest, resonant, and grounded in what
+the product actually does — while **keeping the original refined ink-landscape hero
+visual** (`/hero-bg.png`). Reviewed by an in-loop top cultural-product UI/UX designer
+sub-agent (refs: The Met / Google Arts & Culture / NYT / Calm).
+
+### The story behind the copy
+- **Old copy sold nothing true:** hero was "5,000 years of wisdom + modern AI" (every
+  competitor's line); the real moat — *every name's characters are verified to come from
+  a real classical poem, by code; fabrication is structurally impossible* — was nowhere.
+  And a **fake decorative example** ("Forest Rain Lily") was used to sell a product whose
+  whole point is "never invented" — self-defeating. Designer flagged this as the #1 trust
+  hardfix.
+- **New narrative (7 sections):** hero → the ache (for non-native speakers who want a name
+  that *means something*) → **a real generated name** (reuses `NameCard`, see below) →
+  3 honest pillars (真/時/解, no robot emoji) → 3-step how-it-works → Five-Element self
+  teaser (dark ink section) → trust & pricing (3 free, auto-refund on failure, packs from
+  $5) + honest disclaimer → footer with **real** `/privacy /terms /refund` links (were `#`).
+- **Hero title — iterated with the user.** "A Chinese name with a real source" undersold
+  the *match-to-you* half. Final (UX-writer + 中文系 framing): **"A name that fits you —
+  down to the hour you were born."** The "hour" concretely signals Bāzì depth (needs exact
+  birth time) without mysticism; subhead carries the rational proof (Four Pillars + real
+  poetry, "never invented"). Hero kept clean over the landscape — removed the big 林 glyph /
+  `lín·木·Wood` line / "↓ see a real one" arrow at the user's request (they clashed with the
+  lone figure in the ink painting).
+
+### Files
+- `src/app/page.tsx` — full rewrite (kept hero `/hero-bg.png` + a soft cream scrim for text
+  legibility; kept the dark ink "Five-Element self" section visual).
+- `src/components/NameCard.tsx` — new `readOnly?: boolean` (+ optional play props) so the
+  real sample card renders safely on the public page (hides Volume2/Share/Save which need
+  auth/context). Sample = **`张皎`** (皎=Metal, from 《酬殷上人秋夜山亭有赠》陈子昂 唐, real line
+  「皎皎白林秋」, prod-verified) — a real one, never a fake.
+- `src/components/StickyHeader.tsx` — CTA "Find my name" + a "Sign in" link; dropped hover scale.
+- `src/app/layout.tsx` — richer metadata + OpenGraph/Twitter (OG image `/og.png` is a P3 TODO).
+- `src/app/globals.css` — defined the `animate-fade-in / fade-in-up / delay-*` keyframes that
+  were referenced but never existed (so entrance animations actually run) + `prefers-reduced-motion`.
+
+### Verified
+- `npx tsc` clean, ESLint clean, **62/62 tests** (no regression). DOM-level e2e on `/`:
+  hero renders over the landscape image, all sections + real card + correct CTA/legal links,
+  trust hardfixes confirmed (no fake example / no robot emoji / no mysticism / no dead links).
+  (watchr screenshots returned blank all session — a capture limitation, not a render bug.)
+
+### Deferred (P2/P3)
+- P2 visual polish: tighter type scale, de-card-ify, 朱砂 seal + paper texture, ink entrance
+  on hero. P3: real 1200×630 OG image, deeper mobile pass.
+- Other sections still use the new editorial layout; if the user wants the *original* card
+  grids (Why-Choose / How-It-Works) restored with only copy swapped, that's a follow-up.
+
+---
+
+## 2026-06-05 — results page: Five-Element compatibility section ("who you vibe with")
+
+### What landed
+Replaced the decorative "Your colours / Your way / Your season" lines on the
+results page with a **Five-Element interpersonal compatibility** module that answers
+the "which tribes are your friends?" teaser the page had been posing but never
+answering. Branch `feat/element-compatibility`.
+
+### The model (reviewed by an in-loop 八字/国学 master sub-agent)
+Two **orthogonal axes**, not a one-dimensional good/bad verdict:
+- **Axis 1 — relation nature** (pure 生克, same for everyone with that day-master):
+  nourisher(生我·印) / protégé(我生·食伤) / kindred(同族·比劫) /
+  challenger(克我·官杀) / cultivator(我克·财). Stops at the "star" layer — never
+  names 正官/七杀 etc. (only have the element, not stem polarity).
+- **Axis 2 — energy P&L** (lookup against the chart's already-computed 喜忌):
+  favourable → lifts / avoid → costs / neither → easy. Best-match = favourable[0].
+
+The master killed four would-be mistakes, all folded in before coding:
+1. don't compress to one axis (the喜忌 nuance is the whole point);
+2. **比劫 must NOT get strength-flip special-casing** — drive it from 喜忌 like the
+   other four (身强 ≠ always-forbid-比劫; depends on the chosen 用神);
+3. "Muse" for 食伤 was directionally backwards → **Protégé**; "Steward/掌局者" for
+   财 too power-grabby → **Cultivator** (经营/成全, not control);
+4. **never say "相克" or "婚配"** in copy — it contradicts the喜忌-not-生克 thesis and
+   over-promises vs a day-master-only simplification. Added a single-side-view social
+   hook + honest disclaimer instead. Balanced charts soften both sides symmetrically.
+
+### Files
+- new `src/lib/compatibility.ts` (pure, reuses exported `RELATIONSHIPS` + 喜忌) +
+  `src/lib/compatibility.test.ts` (7 cases incl. the 比劫-via-喜忌 regression).
+- new `src/components/ElementCompatibility.tsx` (all English copy lives here; logic
+  module stays prose-free). Matches existing amber/stone visual language.
+- `DestinyCard.tsx`: dropped colours/way/season block + dead computations; tribes chip
+  row kept as the section header, compatibility rendered right under it.
+- `bazi.ts`: exported `RELATIONSHIPS` (was private).
+
+### Verified
+- `npx tsc` clean, ESLint clean, **62/62 tests** (55 prior, no regression + 7 new).
+- Browser e2e (1990-01-04 / Suining / female = Earth/Strong, the screenshot chart):
+  all five 生克 relations classify correctly (🔥Nourisher·Best / 🌲Challenger /
+  ⚔️Protégé / 🌊Cultivator / ⛰️Kindred); Lifts/Costs chips, summary金句 (no "clash"),
+  hook + disclaimer all render; colours/way/season confirmed gone.
+
+### Deferred (2nd pass, agreed)
+- Share card (`ElementShareCard.tsx`): add a "Best match: 🔥 Radiant Flame" line.
+- Optional: click-to-expand a tribe row for its relationship detail.
+
+---
+
 ## 2026-06-01 — always-3 invariant fixed (graded-relaxation rescue)
 
 ### The bug

@@ -16,8 +16,9 @@
 import "dotenv/config";
 import { config as dotenvConfig } from "dotenv";
 dotenvConfig({ path: ".env.local" });
-import { supabaseAdmin } from "../src/lib/supabaseAdmin";
-import { openai } from "../src/lib/openai";
+import { getSupabaseAdmin } from "../src/lib/supabaseAdmin";
+const supabaseAdmin = getSupabaseAdmin();
+import { getOpenAI } from "../src/lib/openai";
 
 interface CuratedEntry {
   title: string;
@@ -709,7 +710,7 @@ async function main() {
     ...toRehealChunk.map((x) => x.entry.chunk_text),
   ];
   console.log(`\nEmbedding ${allChunkTexts.length} chunks via text-embedding-3-small …`);
-  const embedResp = await openai.embeddings.create({
+  const embedResp = await getOpenAI().embeddings.create({
     model: "text-embedding-3-small",
     input: allChunkTexts,
     encoding_format: "float",

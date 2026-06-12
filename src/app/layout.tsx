@@ -14,11 +14,33 @@ const lora = Lora({
   display: "swap", // 字体没加载完前先显示系统字体，防止白屏
 });
 
+const SITE_DESCRIPTION =
+  "A Chinese name with a real source. Every character is verified to come from a real line of classical poetry — read from your birth chart (Bāzì), never invented.";
+
 export const metadata: Metadata = {
-  title: "HarmonyName - Authentic Chinese Naming",
-  description: "Discover the Chinese name that chooses you, powered by BaZi wisdom and AI.",
+  metadataBase: new URL("https://harmonyname.com"),
+  title: {
+    default: "HarmonyName — A Chinese name with a real source",
+    template: "%s · HarmonyName",
+  },
+  description: SITE_DESCRIPTION,
   icons: {
     icon: "/icon.png", // 确保你把 logo 复制并改名为 icon.png 放在 src/app/ 下
+  },
+  openGraph: {
+    type: "website",
+    siteName: "HarmonyName",
+    title: "HarmonyName — A Chinese name with a real source",
+    description: SITE_DESCRIPTION,
+    url: "/",
+    // TODO(P3): 用真实名字卡渲染一张 1200×630 OG 图,放在 /public/og.png
+    images: [{ url: "/og.png", width: 1200, height: 630, alt: "HarmonyName" }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "HarmonyName — A Chinese name with a real source",
+    description: SITE_DESCRIPTION,
+    images: ["/og.png"],
   },
 };
 

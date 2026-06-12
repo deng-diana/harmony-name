@@ -7,7 +7,7 @@
  *   - 出处由代码事后按 lineId 从 DB 回填 → 造假在结构上不可能(见 verify.ts / 编排层)。
  * 过量生成 6 个候选,留给硬校验 + 评审先生筛选。
  */
-import { claude } from "../claude";
+import { getClaude } from "../claude";
 import type { ScoredPoem } from "../retriever";
 import type { NameCandidate } from "../verify";
 
@@ -142,7 +142,7 @@ export async function runComposer(
     buildComposerUserMessage(profile) +
     (feedback ? `\n\nREVISION FEEDBACK (fix these and resubmit 6 candidates):\n${feedback}` : "");
 
-  const message = await claude.messages.create({
+  const message = await getClaude().messages.create({
     model: MODEL,
     max_tokens: 4096,
     temperature: 0.8,
