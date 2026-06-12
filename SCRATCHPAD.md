@@ -46,9 +46,18 @@ always-3 **100%** · avg naturalness **6.1/10**. Residual: the 2 thinnest charts
 (narrow Metal/Earth favourable) still give plain single-char names — the corpus
 ceiling (user declined corpus expansion; merge-and-iterate chosen). 65/65 tests green.
 
-### ⚠️ Operational follow-ups
-1. Run `supabase/migrations/008_rebalance_fame_weight.sql` in the Supabase SQL editor.
-2. Confirm `NAMING_PIPELINE_V2=true` in Vercel prod (all changes are v2-only).
+### Status: 🟢 LIVE (2026-06-12)
+- PR #2 merged to `main` (merge `3a3d9d3`) → Production deploy **Ready** (green).
+- Migration 008 **run** in Supabase SQL editor (Success).
+- `NAMING_PIPELINE_V2` is "Sensitive" (value hidden in the Vercel UI by design) but
+  was added 2026-05-31 = when v2 was flipped on → trusted `true`. The Ready prod
+  deploy therefore serves the **v2 pipeline + the full naming overhaul** to real users.
+- Verify by generating on harmonyname.com: grounded 双字名 (松月/清泉/青溪/明月) = v2 live.
+
+### Deferred (corpus ceiling)
+The 2 thinnest charts (narrow Metal/Earth favourable) still produce plain single-char
+names — fixable only by expanding the poem corpus (declined this round) or relaxing
+strict grounding. Revisit if real-user feedback shows it matters.
 
 ---
 
