@@ -43,6 +43,11 @@ describe("getBeijingWallClock (timezone fix)", () => {
       minute: 0,
     });
   });
+  it("threads minutes through (HH:MM precision for API/MCP callers)", () => {
+    // 2026-06-12 审计:旧实现丢弃分钟。Shanghai=北京时,minute 应原样保留;跨时区也守恒。
+    expect(getBeijingWallClock("2000-06-15", 8, "Asia/Shanghai", 30).minute).toBe(30);
+    expect(getBeijingWallClock("1990-01-01", 23, "America/New_York", 45).minute).toBe(45);
+  });
   it("is server-timezone independent (pure UTC math)", () => {
     // Same call must yield the same result regardless of process TZ
     const a = getBeijingWallClock("1985-03-20", 6, "Europe/London");
@@ -184,23 +189,26 @@ describe("喜忌不变量(调候守卫回归)", () => {
     }
   });
 
-  it("身强:日主元素与印星(生我)绝不进 favourable", () => {
+  // 注:断言【首选 favourable[0]】而非全部 —— 调候降级(2026-06-12)允许把"暖字"等
+  // 调候之神放到 favourable 末位(寒木向阳:身弱木亦须见一点火),故末位可含克泄耗,
+  // 但【主用神方向】仍须正确。这正好守住调候翻转 bug 不复发,又容纳调候降级。
+  it("身强:主用神(首选)不是日主/印星(调候之神可在末位)", () => {
     for (const date of dates) {
       const r = calculateBazi(date, "12:00");
       if (r.strength !== "Strong") continue;
       const rel = RELATIONSHIPS[r.dayMaster as keyof typeof RELATIONSHIPS];
-      expect(r.favourableElements).not.toContain(r.dayMaster);
-      expect(r.favourableElements).not.toContain(rel.generatedBy);
+      expect(r.favourableElements[0]).not.toBe(r.dayMaster);
+      expect(r.favourableElements[0]).not.toBe(rel.generatedBy);
     }
   });
 
-  it("身弱:favourable 只含生扶(印/比),不混入克泄耗", () => {
+  it("身弱:主用神(首选)是生扶(印/比)(调候之神可在末位)", () => {
     for (const date of dates) {
       const r = calculateBazi(date, "12:00");
       if (r.strength !== "Weak") continue;
       const rel = RELATIONSHIPS[r.dayMaster as keyof typeof RELATIONSHIPS];
       const allowed = new Set([rel.generatedBy, r.dayMaster]);
-      for (const f of r.favourableElements) expect(allowed.has(f)).toBe(true);
+      expect(allowed.has(r.favourableElements[0])).toBe(true);
     }
   });
 });

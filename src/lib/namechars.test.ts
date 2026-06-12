@@ -7,12 +7,18 @@ import {
   isGenderClashing,
   genderLeanOf,
   isUsableInName,
+  isNameSuitable,
+  isForbiddenGivenName,
+  isCelebrityName,
+  isForbiddenNameSound,
   candidateCharsFor,
   charsOfElement,
   pinyinOf,
   type ElementEN,
 } from "./namechars";
 import truth from "../../fixtures/element-truth.json";
+import nameChars from "../data/name-chars.json";
+import blacklist from "../data/name-blacklist.json";
 
 describe("字库 element classification", () => {
   it("matches the hand-labeled element-truth fixture", () => {
@@ -60,9 +66,14 @@ describe("字库 coverage (must not over-restrict naming)", () => {
   // (~10) — a guardrail against accidental emptying, not a quality target.
   // Real charts have 2+ favourable elements; single-element female-Metal is rare.
   // (Jade 玉部 lives in Earth per 玉从石→土, which keeps Earth-female rich.)
-  it("each element offers a usable pool for both genders (male ≥15, female ≥10)", () => {
+  // Metal is corpus-thin (few 金-element name chars appear in classical poetry) AND
+  // 2026-06-12 audit removed its 器物/铜臭 chars (镜/铜/钗/钿) — so its male floor is
+  // realistically lower. A Metal-favourable chart still pairs the Metal char with a
+  // richer-element partner (verify needs only ≥1 favourable char), so 12 is workable.
+  it("each element offers a usable pool for both genders", () => {
     for (const el of ELEMENT_KEYS) {
-      expect(candidateCharsFor([el], "male").length).toBeGreaterThanOrEqual(15);
+      const maleFloor = el === "Metal" ? 12 : 15;
+      expect(candidateCharsFor([el], "male").length).toBeGreaterThanOrEqual(maleFloor);
       expect(candidateCharsFor([el], "female").length).toBeGreaterThanOrEqual(10);
     }
   });
@@ -93,6 +104,79 @@ describe("gender lean classification", () => {
     expect(isGenderClashing("芷", "male")).toBe(true);
     expect(isGenderClashing("芷", "female")).toBe(false);
     expect(isGenderClashing("清", "female")).toBe(false); // neutral never clashes
+  });
+});
+
+// 2026-06-12 审计:字库手工增删易引入矛盾(死条目/双归类/混入禁字),加自洽性回归。
+describe("字库数据自洽性", () => {
+  const nc = nameChars as unknown as Record<string, string[]>;
+  const elementUnion = new Set(ELEMENT_KEYS.flatMap((e) => nc[e]));
+  const neutral = (nc._neutralNameChars ?? []) as string[];
+  const nameUniverse = new Set([...elementUnion, ...neutral]);
+  const hard = new Set([
+    ...blacklist.hard.functionWords,
+    ...blacklist.hard.inauspicious,
+    ...blacklist.hard.overweening,
+    ...blacklist.hard.crude,
+  ]);
+
+  it("lean 表 ⊆ 五行表 ∪ 好名字表(无悬空标注)", () => {
+    for (const c of [...nc.masculineLean, ...nc.feminineLean]) {
+      expect(nameUniverse.has(c)).toBe(true);
+    }
+  });
+
+  it("lean 表与硬黑名单不相交(无死条目,如曾经的 圣)", () => {
+    for (const c of [...nc.masculineLean, ...nc.feminineLean]) {
+      expect(hard.has(c)).toBe(false);
+    }
+  });
+
+  it("masculineLean ∩ feminineLean = ∅", () => {
+    const fem = new Set(nc.feminineLean);
+    for (const c of nc.masculineLean) expect(fem.has(c)).toBe(false);
+  });
+
+  it("好名字表与五行表不重叠(同字单一归类)", () => {
+    for (const c of neutral) expect(elementUnion.has(c)).toBe(false);
+  });
+
+  it("五行表内不含硬黑名单字", () => {
+    for (const el of ELEMENT_KEYS) {
+      for (const c of nc[el]) expect(hard.has(c)).toBe(false);
+    }
+  });
+
+  it("已删的器物/谐音字确实不在库(灯/钗/镜/铜/沼/渔/梨/幽/圣)", () => {
+    for (const c of ["灯", "钗", "镜", "铜", "沼", "渔", "梨", "幽", "圣"]) {
+      expect(nameUniverse.has(c)).toBe(false);
+    }
+  });
+
+  // composer/critic prompt 的 GOLD 正面示例必须能通过自家闸门 —— 否则模型学了金标准
+  // 却产出必死候选,浪费候选位(2026-06-12 审计:涵虚/苍山/望舒曾过不了 isNameSuitable)。
+  it("prompt 的 GOLD 正面示例都过自家闸门(isNameSuitable + 非禁用名)", () => {
+    const gold: [string, string][] = [
+      ["松", "月"], ["清", "泉"], ["青", "溪"],
+      ["明", "月"], ["晓", "露"], ["月", "华"],
+    ];
+    for (const [a, b] of gold) {
+      expect(isNameSuitable(a)).toBe(true);
+      expect(isNameSuitable(b)).toBe(true);
+      expect(isForbiddenGivenName([a, b])).toBe(false);
+    }
+  });
+
+  it("名人撞名拦截(王维/李白)但不误伤普通同姓名", () => {
+    expect(isCelebrityName("王", ["维"])).toBe(true);
+    expect(isCelebrityName("诸", ["葛", "亮"])).toBe(true);
+    expect(isCelebrityName("王", ["睿"])).toBe(false); // 普通名
+  });
+
+  it("谐音忌名【带声调】精确匹配 —— 拦真谐音、不误杀近音好名", () => {
+    expect(isForbiddenNameSound("吴", ["晴"])).toBe(true); // 吴晴 = wú qíng = 无情
+    expect(isForbiddenNameSound("吴", ["清"])).toBe(false); // 吴清 = wú qīng ≠ 无情(声调不同)
+    expect(isForbiddenNameSound("石", ["毅"])).toBe(false); // 石毅 = shí yì ≠ 失意(已不在表 + 声调)
   });
 });
 

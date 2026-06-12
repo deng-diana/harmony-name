@@ -14,6 +14,8 @@ import {
   elementOfChar,
   isNameSuitable,
   isForbiddenGivenName,
+  isCelebrityName,
+  isForbiddenNameSound,
   isHardBlacklisted,
   isFunctionWord,
   isSurnameBlacklisted,
@@ -47,6 +49,11 @@ export interface VerifyContext {
    * (orchestrate ③.6,不过此关)产出。默认 false(测试/兜底不受限)。
    */
   requireTwoGivenChars?: boolean;
+  /**
+   * 指定姓模式(用户选了姓):姓是【事实】不是审美,LLM 不得擅改。设了此值,
+   * verifyCandidate 会硬校验 surnameChar === expectedSurname。auto 模式不设。
+   */
+  expectedSurname?: string;
 }
 
 export interface VerifyResult {
@@ -124,6 +131,29 @@ export function verifyCandidate(
   //     单字只在确定性兜底(③.6,不过此关)作为 always-3 的最后保险。
   if (ctx.requireTwoGivenChars && c.givenChars.length !== 2) {
     reasons.push(`需双字名(姓+2),当前给定 ${c.givenChars.length} 字`);
+  }
+
+  // ②e 叠字 / 给定字与姓同字:LLM 低概率产出,零成本可堵。
+  //   叠字【刻意全拒】(产品定位"讲究"取名,叠字偏乳名;菲菲/婷婷等合法叠字也一并不出)——
+  //   这是取舍而非纯防呆;双字名管线本就少出叠字,影响有限。同字(李李/李李x)纯坏名。
+  if (new Set(c.givenChars).size !== c.givenChars.length) {
+    reasons.push(`给定字叠字(${c.givenChars.join("")})`);
+  }
+  if (c.givenChars.includes(c.surnameChar)) {
+    reasons.push(`给定字与姓同字(${c.surnameChar})`);
+  }
+
+  // ②f 指定姓模式:姓是事实,必须等于用户指定的姓(LLM 不得擅改/留空)。
+  if (ctx.expectedSurname && c.surnameChar !== ctx.expectedSurname) {
+    reasons.push(`姓「${c.surnameChar || "(空)"}」≠ 指定姓「${ctx.expectedSurname}」`);
+  }
+
+  // ②g 名人/历史人物撞名 + 全名谐音忌名 —— 取名"一票否决"项。
+  if (isCelebrityName(c.surnameChar, c.givenChars)) {
+    reasons.push(`全名「${c.surnameChar}${c.givenChars.join("")}」撞名人/历史人物`);
+  }
+  if (isForbiddenNameSound(c.surnameChar, c.givenChars)) {
+    reasons.push(`全名谐音不雅`);
   }
 
   // ③ 名字适用性 + 五行

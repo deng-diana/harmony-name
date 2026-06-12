@@ -227,6 +227,26 @@ const WEAK_THRESHOLD = 0.3;
 // 透干 (transparent stem):藏干在天干上同时出现 → 该藏干力量显著放大,命理判旺衰要点。
 const TRANSPARENT_BOOST = 1.5;
 
+// 地支六冲(相冲损力)。
+const ZHI_CHONG: Record<string, string> = {
+  子: "午", 午: "子", 丑: "未", 未: "丑", 寅: "申", 申: "寅",
+  卯: "酉", 酉: "卯", 辰: "戌", 戌: "辰", 巳: "亥", 亥: "巳",
+};
+// 三会方(力量最强,方局)。
+const ZHI_HUI: [string[], string][] = [
+  [["寅", "卯", "辰"], "Wood"],
+  [["巳", "午", "未"], "Fire"],
+  [["申", "酉", "戌"], "Metal"],
+  [["亥", "子", "丑"], "Water"],
+];
+// 三合局(次于会方)。
+const ZHI_HE: [string[], string][] = [
+  [["申", "子", "辰"], "Water"],
+  [["亥", "卯", "未"], "Wood"],
+  [["寅", "午", "戌"], "Fire"],
+  [["巳", "酉", "丑"], "Metal"],
+];
+
 function analyzeStrength(
   dayMaster: string,
   dayGan: string, // 日干本身 —— 不计入帮扶但参与透干检测
@@ -246,20 +266,41 @@ function analyzeStrength(
   const transparentSet = new Set([dayGan, ...otherGans]);
   let support = 0;
   let drain = 0;
+  // per-element 累计权重 —— 供"三合/三会局"加权 + "从格"判定最旺一行用。
+  const elemWeight: Record<string, number> = {
+    Wood: 0, Fire: 0, Earth: 0, Metal: 0, Water: 0,
+  };
   const tally = (el: string, w: number) => {
+    if (el in elemWeight) elemWeight[el] += w;
     if (isSupport(el)) support += w;
     else drain += w;
   };
+
+  // 月支六冲:月令被邻支冲损 → 月令乘数 3→2(冲坏的月令不该再拿满权)。
+  const monthChonged = zhis.some((z, i) => i !== 1 && ZHI_CHONG[monthZhi] === z);
+  const monthMult = monthChonged ? 2 : 3;
+
   otherGans.forEach((g) => tally(GAN_WUXING[g], 1));
   zhis.forEach((z, i) => {
-    const mult = i === 1 ? 3 : 1; // 月支 = 月令,加权
+    const mult = i === 1 ? monthMult : 1; // 月支 = 月令,加权(被冲则减半档)
     (ZHI_HIDE_GAN[z] || []).forEach((hg, idx) => {
       let w = (HIDE_GAN_WEIGHTS[idx] ?? 0.3) * mult;
       if (transparentSet.has(hg)) w *= TRANSPARENT_BOOST;
       tally(GAN_WUXING[hg], w);
     });
   });
+
+  // 三合局 / 三会方:三支齐 → 该五行成势,力量超逐支累加,补一笔加权(会方 > 三合)。
+  // 注:三支本气已各自计入,故加权取保守值,避免把本是 Balanced 的盘单凭组合推过 Strong 线。
+  const zhiSet = new Set(zhis);
+  for (const [grp, el] of ZHI_HUI) if (grp.every((z) => zhiSet.has(z))) tally(el, 2.0);
+  for (const [grp, el] of ZHI_HE) if (grp.every((z) => zhiSet.has(z))) tally(el, 1.5);
+
   const ratio = support / (support + drain || 1); // 0~1
+  // 通根:日主五行是否为任一地支的【本气】(藏干首位)—— 从格判定的关键。
+  const hasRoot = zhis.some(
+    (z) => GAN_WUXING[(ZHI_HIDE_GAN[z] || [])[0]] === dayMaster
+  );
 
   let strength = "Balanced";
   // 名字字数【不由旺衰决定】—— 字数属姓名学/三才五格,与八字喜用神是两套体系,
@@ -275,7 +316,21 @@ function analyzeStrength(
   let favourable: string[] = [];
   let avoid: string[] = [];
 
-  if (strength === "Weak") {
+  // 从弱/从势格(命理 #1 增强):日主【极弱(ratio<0.12)且无本气通根】时,扶抑法会判
+  // Weak 且喜印比 —— 但从格的喜忌【与扶抑相反】:不可逆其大势,当顺势喜克泄耗、忌印比。
+  // 旧逻辑对这类(约 3-8% 极端盘)会给出【完全反向】的喜忌(取名用字五行整反)。
+  // 安全处理:不激进翻转(误判风险),而是顺势取克泄耗为喜、avoid 留空(等同 Balanced 的
+  // 软处理)—— 既消除"被迫印比"的硬错,又不破坏 favourable∩avoid=∅ 等不变量。
+  const isFollowWeak = ratio < 0.12 && !hasRoot;
+  if (isFollowWeak) {
+    strength = "Balanced"; // 对外标签软化(schema 仅 Weak/Strong/Balanced;从格归 Balanced 软处理)
+    favourable = [
+      relations.controlledBy, // 官杀
+      relations.generate, // 食伤(泄秀)
+      relations.control, // 财
+    ];
+    avoid = [];
+  } else if (strength === "Weak") {
     favourable = [relations.generatedBy, dayMaster];
     avoid = [relations.controlledBy, relations.generate, relations.control];
   } else if (strength === "Strong") {
@@ -328,16 +383,27 @@ function analyzeStrength(
     // 旺衰方向守卫(修复:旧逻辑无条件翻转,会把忌神当喜神)。
     //   boost 属"生扶"(印 generatedBy / 比 dayMaster):只该补给【身弱/平衡】,身强补印比=火上浇油。
     //   boost 属"克泄耗"(官杀/食伤/财):只该用于【身强/平衡】,身弱再泄=雪上加霜。
-    // 与当前旺衰冲突时,调候【不采纳】(既不进 favourable 也不进 avoid),绝不翻转喜忌。
+    // 与当前旺衰冲突时,调候【降级保留】而非整个丢弃(命理 #1 增强):古法"调候为急"——
+    //   冬月身弱木/金(寒木向阳、寒金喜火),火虽是克泄耗,也须见一点暖。旧逻辑直接丢弃,
+    //   清一色水木缺点睛暖字。改为:不冲突→进 favourable 首位(调候优先);冲突→不进 avoid,
+    //   但 push 到 favourable【末位】(次要之喜),既不自相矛盾(verify 忌神硬拦),又留住暖字。
     const boostIsSupport = boost === dayMaster || boost === relations.generatedBy;
+    // 从弱盘【忌印比是铁律】,顺势而行,暖字不值得破——故 isFollowWeak 时把"生扶类调候"
+    // 也视为冲突(且对它连末位都不放,见下)。否则夏水从弱(boost=Metal=印)会被顶到首位,
+    // 与从弱立意整反(评审 2026-06-12 标出)。
     const conflict =
-      (boostIsSupport && strength === "Strong") ||
+      (boostIsSupport && (strength === "Strong" || isFollowWeak)) ||
       (!boostIsSupport && strength === "Weak");
-    if (!conflict) {
-      // 不冲突时:调候优先于扶抑对该元素的判定 —— 移出 avoid + 推入 favourable。
-      const idx = avoid.indexOf(boost);
-      if (idx !== -1) avoid.splice(idx, 1);
-      if (!favourable.includes(boost)) favourable.unshift(boost);
+    const idx = avoid.indexOf(boost);
+    if (idx !== -1) avoid.splice(idx, 1); // 任何情况下,调候之神都不该再当忌神
+    if (!favourable.includes(boost)) {
+      if (isFollowWeak && boostIsSupport) {
+        // 从弱遇生扶类调候:印比绝不入喜用,连末位都不放(顺势铁律)。
+      } else if (conflict) {
+        favourable.push(boost); // 冲突:降级到末位(次要之喜)
+      } else {
+        favourable.unshift(boost); // 不冲突:调候优先,顶到首位
+      }
     }
   }
 
@@ -438,10 +504,11 @@ function trueSolarWallClock(
 export function getBeijingWallClock(
   dateString: string,
   hour: number,
-  timezone: string
+  timezone: string,
+  minute: number = 0 // 默认 0 保持 UI(时辰中点 HH:00)现状;API/MCP 直传 HH:MM 时补齐精度
 ): { year: number; month: number; day: number; hour: number; minute: number } {
   const [y, mo, d] = dateString.split("-").map(Number);
-  const wallAsUTC = Date.UTC(y, (mo || 1) - 1, d || 1, hour, 0, 0);
+  const wallAsUTC = Date.UTC(y, (mo || 1) - 1, d || 1, hour, minute, 0);
   const offsetMin = getTimezoneOffsetMinutes(timezone, new Date(wallAsUTC));
   const utcInstant = wallAsUTC - offsetMin * 60000;
   const beijing = new Date(utcInstant + 480 * 60000); // +8h
@@ -470,15 +537,18 @@ export function calculateBazi(
   let isUnknown = timeString === "unknown" || !timeString;
   let hour = 12; // 默认值
 
+  let minute = 0; // 出生分钟:UI 走时辰中点(HH:00)→ 0;API/MCP 直传 HH:MM 时取真值,补真太阳时精度
   if (!isUnknown && timeString.trim()) {
     // 验证时间格式：应该是 "HH:MM" 或 "HH:mm" 格式
     const timeMatch = timeString.trim().match(/^(\d{1,2}):(\d{2})$/);
     if (timeMatch) {
       const parsedHour = parseInt(timeMatch[1], 10);
+      const parsedMin = parseInt(timeMatch[2], 10);
       // 确保解析出的小时数是有效数字且在合理范围内 (0-23)
       // 注意：parseInt 对于数字字符串不会返回 NaN，但保留检查作为防御性编程
       if (!isNaN(parsedHour) && parsedHour >= 0 && parsedHour <= 23) {
         hour = parsedHour;
+        if (parsedMin >= 0 && parsedMin <= 59) minute = parsedMin;
       } else {
         // 如果解析失败或超出范围，当作 unknown 处理
         isUnknown = true;
@@ -509,7 +579,7 @@ export function calculateBazi(
 
   if (city && !isUnknown) {
     // 北京墙钟 → 年/月柱(节气)
-    const bj = getBeijingWallClock(dateString, hour, city.timezone);
+    const bj = getBeijingWallClock(dateString, hour, city.timezone, minute);
     const bjEC = Solar.fromYmdHms(bj.year, bj.month, bj.day, bj.hour, bj.minute, 0)
       .getLunar()
       .getEightChar();
@@ -531,7 +601,7 @@ export function calculateBazi(
     timeZhi = tsEC.getTimeZhi();
   } else {
     // 退路 / 时辰未知:用原始日期(未知时辰按正午,避免子时换日歧义),不做真太阳时校正。
-    const ec = Solar.fromYmdHms(fy, fmo || 1, fd || 1, hour, 0, 0)
+    const ec = Solar.fromYmdHms(fy, fmo || 1, fd || 1, hour, minute, 0)
       .getLunar()
       .getEightChar();
     pinSect2(ec);

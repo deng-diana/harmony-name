@@ -51,6 +51,25 @@ export interface PipelineResult {
 type ProgressFn = (step: number, total: number, message: string) => void;
 const TOTAL = 5;
 
+// Composer 安全包装:一次 Claude API 异常(529 过载/超时/SDK 重试耗尽)不应炸掉整条
+// 管线 —— 否则已通过校验的 1~2 个合法名 + ③.6 纯代码兜底全被连坐。失败时降级为
+// "这一轮 0 候选",自然落入下一兜底层,最终走到确定性救援保 always-3。
+async function safeComposer(
+  profile: ComposerProfile,
+  pool: ScoredPoem[],
+  feedback?: string
+): Promise<{ analysis: string; candidates: ComposerCandidate[] }> {
+  try {
+    return await runComposer(profile, pool, feedback);
+  } catch (e) {
+    console.error(
+      "Composer call failed, degrading to next tier:",
+      e instanceof Error ? e.message : e
+    );
+    return { analysis: "", candidates: [] };
+  }
+}
+
 export async function runNamingPipeline(
   input: PipelineInput,
   opts: { onProgress?: ProgressFn } = {}
@@ -90,11 +109,12 @@ export async function runNamingPipeline(
     avoidElements: input.avoidElements,
     gender: input.gender,
     requireTwoGivenChars: true, // 正常只出双字名(姓+2);单字仅由确定性兜底 ③.6 产出
+    expectedSurname: input.surnameChar, // 指定姓模式才有值;auto 模式 undefined → 不校验
   };
 
   // ② 取名先生组名
   onProgress(2, TOTAL, "The naming master is composing…");
-  const first = await runComposer(profile, pool);
+  const first = await safeComposer(profile, pool);
   let analysis = first.analysis;
 
   // ③ 校验,不足 3 个则带反馈重生成一轮
@@ -111,7 +131,7 @@ export async function runNamingPipeline(
           `- ${x.c.surnameChar}${x.c.givenChars.join("")}: ${x.r.reasons.join("; ")}`
       )
       .join("\n");
-    const retry = await runComposer(profile, pool, failed);
+    const retry = await safeComposer(profile, pool, failed);
     if (!analysis) analysis = retry.analysis;
     verified = dedupe([...verified, ...passing(retry.candidates, ctx)], ctx);
   }
@@ -135,7 +155,7 @@ export async function runNamingPipeline(
       `Only ${verified.length} valid name(s) so far — the favourable elements are constrained. ` +
       `The pool has been BROADENED with more lines. Find more TWO-given-character names (surname + 2 ` +
       `characters that form a word/image, both in one pool line, e.g. 松月 清泉 晓露). Give 8.`;
-    const rescue = await runComposer(profile, pool, broadenFeedback);
+    const rescue = await safeComposer(profile, pool, broadenFeedback);
     if (!analysis) analysis = rescue.analysis;
     verified = dedupe([...verified, ...passing(rescue.candidates, ctx)], ctx);
   }
@@ -153,7 +173,7 @@ export async function runNamingPipeline(
       recommendedNameLength: "2 characters (Surname + 1 Name)",
     };
     const singleCtx: VerifyContext = { ...ctx, requireTwoGivenChars: false };
-    const rescue2 = await runComposer(singleProfile, pool, singleFeedback);
+    const rescue2 = await safeComposer(singleProfile, pool, singleFeedback);
     if (!analysis) analysis = rescue2.analysis;
     verified = dedupe([...verified, ...passing(rescue2.candidates, singleCtx)], ctx);
   }
@@ -210,7 +230,10 @@ export async function runNamingPipeline(
         ordered = verified
           .map((c, i) => {
             const r = byIdx.get(i);
-            if (r?.comment) c.masterComment = r.comment; // 用评审点评覆盖
+            // 用评审点评覆盖,但保留 deterministic 救援的诚实标注(系统兜底姓/放宽性别)。
+            if (r?.comment) {
+              c.masterComment = c.rescueNote ? `${r.comment} ${c.rescueNote}` : r.comment;
+            }
             return { c, i };
           })
           .sort((a, b) => sortKey(b.i) - sortKey(a.i))
@@ -221,9 +244,24 @@ export async function runNamingPipeline(
     }
   }
 
-  // ⑤ 回填出处 + 五行/拼音 → NameOption(出处一律来自候选池,非 LLM 文本)
+  // ⑤ 终选:优先取【来自不同诗】的 3 个(防同一首诗出多个名,增强独属感);
+  //    不足 3 个再从剩余按原排序补齐。ordered 已按 critic 分降序,故同诗取分最高者。
+  const picked: ComposerCandidate[] = [];
+  const usedLines = new Set<number>();
+  for (const c of ordered) {
+    if (picked.length >= 3) break;
+    if (usedLines.has(c.lineId)) continue;
+    usedLines.add(c.lineId);
+    picked.push(c);
+  }
+  for (const c of ordered) {
+    if (picked.length >= 3) break;
+    if (!picked.includes(c)) picked.push(c);
+  }
+
+  // ⑥ 回填出处 + 五行/拼音 → NameOption(出处一律来自候选池,非 LLM 文本)
   onProgress(5, TOTAL, "Revealing your names…");
-  const names = ordered.slice(0, 3).map((c) => hydrate(c, pool));
+  const names = picked.map((c) => hydrate(c, pool));
   return { names, analysis };
 }
 
