@@ -30,12 +30,18 @@ anon/authenticated is safe. **Must be run manually in the Supabase SQL editor.**
 ### Verified
 `npx tsc` clean (only a pre-existing implicit-any in enrich-corpus remains), 62/62 tests pass.
 
-### Operational follow-up (user action, not code)
-Add env vars to Vercel **Preview** env (currently Production-only): at minimum
-`OPENAI_API_KEY` + `CLAUDE_API_KEY` + the Supabase trio. **Do NOT** copy Stripe LIVE keys
-into Preview — use TEST keys or leave unset (code degrades gracefully). With the lazy-init
-fix the build goes green even without Preview vars; vars are only needed for Preview's
-generate feature to actually run.
+### Operational fix — Preview env vars (DONE)
+The build had TWO independent causes; both had to be fixed. Beyond the lazy-init code
+(cause ①), the app legitimately needs Supabase `URL` + anon key at build time (Server
+Components in auth-gated pages/layouts call `createClient()` during page-data collection)
+— cause ②. All 12 Vercel env vars were **Production-only**, so Preview had nothing.
+Added the 8 safe vars (OpenAI/Claude/Supabase-trio/Upstash-pair/Sentry — **Stripe excluded**,
+since prod uses LIVE keys) to Preview. The user then widened them from branch-scoped to
+**all Preview branches** in the dashboard (durable; future branches inherit them).
+Note: Vercel CLI 54.4.1 can't add to "all preview branches" non-interactively (returns
+`git_branch_required` even with `--yes`); branch-scoped `vercel env add NAME preview <branch>
+--value … --yes` works. Editing env scope in the dashboard preserves the encrypted value
+(don't retype sensitive values).
 
 ### Follow-up commit — supabaseAdmin was the second build mine (whack-a-mole)
 First lazy-init commit (36d4c01) fixed openai/claude but the next Preview build failed with
@@ -50,6 +56,16 @@ Converted `supabaseAdmin` → `getSupabaseAdmin()` + 4 app call sites + 3 data s
 Couldn't run `next build` locally to prove it — macOS TCC blocks Turbopack from reading
 `~/Desktop` (`Operation not permitted`); Vercel (Linux) is unaffected. Verified via tsc +
 62/62 tests + exhaustive import-time audit instead.
+
+### Outcome (resolved)
+- Commits on branch: `36d4c01` (openai/claude lazy) + `3816890` (supabaseAdmin lazy).
+- Net effect of the code fix: the build no longer needs **any secret** — only the two
+  *public* Supabase vars (URL + anon key) for build-time Server-Component rendering.
+- **Preview build → green** (`p07ck3sz9`, 48s) once both fixes were in place.
+- RLS 007 applied + verified in prod Supabase: `poems` / `poem_chunks` both
+  `relrowsecurity = true`.
+- **PR #1 merged to main** (`11b2aa5`) → **Production deploy green** (`a7mtb28kc`); new
+  code (lazy-init + Five-Element compatibility + landing overhaul) is live.
 
 ---
 
