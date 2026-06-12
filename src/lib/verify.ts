@@ -12,6 +12,7 @@
 import type { ScoredPoem } from "./retriever";
 import {
   elementOfChar,
+  isNameSuitable,
   isHardBlacklisted,
   isFunctionWord,
   isSurnameBlacklisted,
@@ -107,17 +108,17 @@ export function verifyCandidate(
     }
   }
 
-  // ③ 五行 + 名字适用性
+  // ③ 名字适用性 + 五行
   const elems = c.givenChars.map(elementOfChar);
-  // ③a 每个名字字必须是【字库内的名字适用字】(elementOfChar 有定义)。否则取名先生会
-  //     从诗句里抠出 床/裙/透/宙/日/芰 这类"诗中有、却非名字"的器物/物象/动词残片当字 ——
-  //     确定性校验(引用/五行/always-3)抓不到,但国学评审一致判为坏名(2026-06-12 验收)。
-  //     字库已从诗库反推重建,凡可接地的名字字皆在内,故此白名单不会误杀好字。
-  c.givenChars.forEach((ch, i) => {
-    if (!elems[i]) {
-      reasons.push(`「${ch}」非字库名字适用字(疑似从诗句抠出的器物/物象/动词字)`);
+  // ③a 每个名字字必须"适合做名字"(在五行表 或 好名字表内)。否则取名先生会从诗句里
+  //     抠出 床/裙/透/宙/鼎/簟 这类器物/物象/动词残片当字 —— 确定性校验(引用/五行/
+  //     always-3)抓不到,但国学评审一致判为坏名(2026-06-12 验收)。好名字表含 月/风/星
+  //     等不属五行但适合入名的字,故不会误杀 松月/明月 这类好名字。
+  for (const ch of c.givenChars) {
+    if (!isNameSuitable(ch)) {
+      reasons.push(`「${ch}」非名字适用字(疑似从诗句抠出的器物/物象/动词字)`);
     }
-  });
+  }
   // ③b 至少一个名字字属喜用神;不得含忌神字
   if (!elems.some((e) => e && ctx.favourableElements.includes(e))) {
     reasons.push(`无名字字属喜用神(${ctx.favourableElements.join("/") || "—"})`);

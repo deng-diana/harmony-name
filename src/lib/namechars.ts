@@ -65,6 +65,18 @@ const FEMININE_LEAN = new Set<string>(
   ((nameCharsData as Record<string, unknown>).feminineLean as string[]) ?? []
 );
 
+// "好名字表":适合做名字、但【不承载五行】的字(月/风/星/影/思…)。与五行表一起
+// 构成"名字适用字"全集。verify 用它挡掉 床/裙/透/宙 这类器物/动词字,同时不误杀
+// 月/松月 这类不属五行的好字(五行表只按金木水火土收字,本就漏掉这类)。
+const NEUTRAL_NAME_SET = new Set<string>(
+  ((nameCharsData as Record<string, unknown>)._neutralNameChars as string[]) ?? []
+);
+
+/** 该字是否"适合做名字"(在五行表 或 好名字表内)。给定字都须通过此关。 */
+export function isNameSuitable(c: string): boolean {
+  return charToElement.has(c) || NEUTRAL_NAME_SET.has(c);
+}
+
 /** 该字的性别倾向(显式列表;未列入者为 neutral)。 */
 export function genderLeanOf(c: string): "masculine" | "feminine" | "neutral" {
   if (MASCULINE_LEAN.has(c)) return "masculine";
