@@ -55,6 +55,16 @@ const genderForbidden = (
 const MALE_FORBIDDEN = new Set(genderForbidden.male);
 const FEMALE_FORBIDDEN = new Set(genderForbidden.female);
 
+// 整名禁用表:逐字都可入名,但组合是节气/地名/老气花色/形容词(清明/桂花/江城…),作名不佳。
+const FORBIDDEN_GIVEN_NAMES = new Set<string>(
+  ((blacklistData as Record<string, unknown>).forbiddenGivenNames as string[]) ?? []
+);
+
+/** 给定名(给定字拼起来)是否整体禁用(节气/地名/老气/形容词等)。 */
+export function isForbiddenGivenName(givenChars: string[]): boolean {
+  return FORBIDDEN_GIVEN_NAMES.has(givenChars.join(""));
+}
+
 // 性别倾向(positive signal,见 name-chars.json _genderLean)。两表互斥;
 // 未列入者为中性。女名排除 masculineLean、男名排除 feminineLean,其余按
 // 同性别 > 中性 排序 —— 给取名先生一个真正"偏向"的候选字池,而非仅靠硬黑名单。

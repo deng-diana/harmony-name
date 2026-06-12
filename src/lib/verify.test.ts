@@ -31,9 +31,9 @@ const ctx = (over: Partial<VerifyContext> = {}): VerifyContext => ({
 });
 
 describe("verifyCandidate", () => {
-  it("passes a grounded, well-formed name (邓清明)", () => {
+  it("passes a grounded, well-formed name (邓清昊)", () => {
     const r = verifyCandidate(
-      { lineId: 1, charSpan: "清明", surnameChar: "邓", givenChars: ["清", "明"] },
+      { lineId: 11, charSpan: "清昊", surnameChar: "邓", givenChars: ["清", "昊"] },
       ctx()
     );
     expect(r.ok).toBe(true);
@@ -138,7 +138,7 @@ describe("verifyCandidate", () => {
   it("does NOT reject a common surname that happens to be on the blacklist (王/何/莫)", () => {
     // 王 is in the overweening list as a GIVEN char, but it's the most common surname.
     const r = verifyCandidate(
-      { lineId: 1, charSpan: "清明", surnameChar: "王", givenChars: ["清", "明"] },
+      { lineId: 11, charSpan: "清昊", surnameChar: "王", givenChars: ["清", "昊"] },
       ctx()
     );
     expect(r.ok).toBe(true);

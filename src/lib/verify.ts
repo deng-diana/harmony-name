@@ -13,6 +13,7 @@ import type { ScoredPoem } from "./retriever";
 import {
   elementOfChar,
   isNameSuitable,
+  isForbiddenGivenName,
   isHardBlacklisted,
   isFunctionWord,
   isSurnameBlacklisted,
@@ -106,6 +107,11 @@ export function verifyCandidate(
     else if (ctx.gender && !ctx.allowGenderLean && isGenderClashing(ch, ctx.gender)) {
       reasons.push(`「${ch}」性别倾向明显与${ctx.gender === "male" ? "男" : "女"}名相冲`);
     }
+  }
+
+  // ②c 整名禁用:逐字可入名,但组合是节气/地名/老气花色/形容词(清明/桂花/江城/明智…)。
+  if (isForbiddenGivenName(c.givenChars)) {
+    reasons.push(`「${c.givenChars.join("")}」整体不宜作名(节气/地名/老气/形容词等)`);
   }
 
   // ③ 名字适用性 + 五行

@@ -38,7 +38,7 @@ export function createComposerSystemPrompt(): string {
   return `
 Role: You are 取名先生, a master Chinese namer deeply versed in 命理 (BaZi/Five Elements), 音韵学 (phonology), 字义/训诂 (semantics), 文字学 (graphology), and classical literature (诗经/楚辞/唐诗/宋词). You NEVER recall poetry from memory — you work ONLY from the VERIFIED POOL of real lines given to you.
 
-Mission: From the pool, compose EXACTLY 6 candidate Chinese names (over-generate; a separate reviewer selects the best 3). Each name = surname + 1–2 given characters.
+Mission: From the pool, compose EXACTLY 8 candidate Chinese names (over-generate; a separate reviewer selects the best 3). Each name = surname + 1–2 given characters.
 
 ALL prose output (analysis, rationale, translation) MUST be in ENGLISH. The only Chinese in your output: the single characters in surnameChar / givenChars / charSpan.
 
@@ -84,7 +84,7 @@ Self-check: for each candidate, state in "impliedWord" the real Chinese word OR 
       "tonePattern": "<English, e.g. 'rising + level + falling'>",
       "masterComment": "<English: why this name excels — phonetics + elements + meaning>"
     }
-    // ... EXACTLY 6 candidates total
+    // ... EXACTLY 8 candidates total
   ]
 }
 `.trim();
@@ -116,7 +116,7 @@ export function buildComposerUserMessage(profile: ComposerProfile): string {
   // 误归入 3-char,Balanced 用户永远拿不到 2 字名选择。改为显式优先匹配 Balanced。
   const len = profile.recommendedNameLength;
   const nameChars = len.includes("2 or 3")
-    ? "1 or 2 given characters (your choice; vary across the 6 candidates)"
+    ? "1 or 2 given characters (your choice; vary across the 8 candidates)"
     : len.startsWith("2 characters")
     ? "1 given character (2-char name total)"
     : len.startsWith("3 characters")
@@ -136,7 +136,7 @@ ${profile.surnameInstruction}
 Candidate characters that carry the favourable elements (prefer drawing given characters from these, and they MUST also appear in your chosen pool line):
 ${profile.candidateChars.join(" ") || "(none provided)"}
 
-TASK: Produce EXACTLY 6 candidates per the rules. Output ONLY the JSON object.
+TASK: Produce EXACTLY 8 candidates per the rules. Output ONLY the JSON object.
 `.trim();
 }
 
@@ -148,7 +148,7 @@ export async function runComposer(
 ): Promise<{ analysis: string; candidates: ComposerCandidate[] }> {
   const userMessage =
     buildComposerUserMessage(profile) +
-    (feedback ? `\n\nREVISION FEEDBACK (fix these and resubmit 6 candidates):\n${feedback}` : "");
+    (feedback ? `\n\nREVISION FEEDBACK (fix these and resubmit 8 candidates):\n${feedback}` : "");
 
   const message = await getClaude().messages.create({
     model: MODEL,
