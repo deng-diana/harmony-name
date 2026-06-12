@@ -7,6 +7,35 @@
 
 ---
 
+## 2026-06-12 — full audit + P0 security/payment hardening 🟢 LIVE
+
+Ran a 5-expert audit (backend-security / pipeline / frontend code review + 八字 /
+取名 domain experts) over the whole codebase. **Verdict: architecture is top-tier**
+("code owns facts, LLM owns taste", atomic credit RPCs, signed webhooks, zero XSS /
+env leaks); issues were at the edges.
+
+**P0 fixed (PR #3, merged `305a88c`, Production deploy Ready):**
+1. Stripe webhook double-credit (Redis-less prod had no idempotency → retries
+   re-granted credits = money loss) → durable DB dedupe (migration **009**).
+2. Webhook now requires `payment_status === "paid"`.
+3. OAuth callback open-redirect → `next` validated to a same-site relative path.
+4. Zod schema hardened (enums + surname max-2-Chinese + bounds) → closes prompt
+   injection + token-cost blowup. Verified live frontend values still pass.
+5. Pipeline 210s soft deadline → caps the observed 460s tail under the 300s route
+   limit (was: hard-killed mid-stream, credit deducted but not refunded).
+
+**⚠️ Run migration `009_stripe_idempotency.sql`** in the Supabase SQL editor (webhook
+degrades gracefully until then — logs + grants, no 500).
+
+**Deferred (P1/P2):** full findings + per-item fixes are in `docs/audit-2026-06-12.md`
+(**gitignored / local-only** — this is a public repo, the report lists not-yet-fixed
+issues so it must NOT be committed). Headlines: frontend SSE has no AbortController +
+allows double-submit; char library has ~17 chars that contradict the composer's own
+bans + missing homophone gate; 王维 over-use; BaZi lacks 从格 / 刑冲合会 (≈3–15% of
+extreme charts mis-weighted) — both domain experts rated `solid-with-gaps`, not top-tier.
+
+---
+
 ## 2026-06-12 — naming-quality overhaul (BaZi fixes + grounded-name quality) `feat/name-quality-overhaul`
 
 Expert-panel-driven overhaul of the v2 naming pipeline. Multiple 国学 sub-agent
