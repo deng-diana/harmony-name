@@ -84,6 +84,7 @@ export async function runNamingPipeline(
     favourableElements: input.favourableElements,
     avoidElements: input.avoidElements,
     gender: input.gender,
+    requireTwoGivenChars: true, // 正常只出双字名(姓+2);单字仅由确定性兜底 ③.6 产出
   };
 
   // ② 取名先生组名
@@ -110,8 +111,9 @@ export async function runNamingPipeline(
     verified = dedupe([...verified, ...passing(retry.candidates, ctx)], ctx);
   }
 
-  // ③.5 兜底:重生成后仍 <3 → 拓宽检索(更多候选字×更多真句)+ 允许单字名,再生成一轮。
-  // 针对喜用神受限的命盘(如女命忌水木、喜用全偏阳),保证基本能凑满 3 个而不破质量底线。
+  // ③.5 兜底:重生成后仍 <3 → 大幅拓宽检索(更多候选字×更多真句),再要一轮【双字名】。
+  // 喜用神受限的命盘(如女命忌水木、喜用全偏阳)候选稀,但拓宽后双字成词名通常仍能凑齐;
+  // 【不再强制单字名】—— 单字名质量塌方(国学评审 2026-06-12),只留给 ③.6 确定性兜底。
   if (verified.length < 3) {
     onProgress(3, TOTAL, "Broadening the search for more options…");
     const broader = await buildVerifiedPool({
@@ -125,14 +127,9 @@ export async function runNamingPipeline(
     ctx = { ...ctx, pool };
     const broadenFeedback =
       `Only ${verified.length} valid name(s) so far — the favourable elements are constrained. ` +
-      `Produce SINGLE-character given names: surname + ONE favourable, gender-appropriate character ` +
-      `that appears in a pool line (e.g. 苏瑶, 苏晗, 苏昭). These are abundant and elegant. Give 6.`;
-    // 兜底强制单字名(姓+1):双字名在受限喜用神下语料稀缺,单字名几乎必过。
-    const rescueProfile: ComposerProfile = {
-      ...profile,
-      recommendedNameLength: "2 characters (Surname + 1 Name)",
-    };
-    const rescue = await runComposer(rescueProfile, pool, broadenFeedback);
+      `The pool has been BROADENED with more lines. Find more TWO-given-character names (surname + 2 ` +
+      `characters that form a word/image, both in one pool line, e.g. 松月 清泉 晓露). Give 8.`;
+    const rescue = await runComposer(profile, pool, broadenFeedback);
     if (!analysis) analysis = rescue.analysis;
     verified = dedupe([...verified, ...passing(rescue.candidates, ctx)], ctx);
   }
