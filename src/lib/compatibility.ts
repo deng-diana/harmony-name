@@ -65,6 +65,10 @@ export function computeCompatibility(input: {
   avoidElements: string[];
 }): Compatibility {
   const dayMaster = input.dayMaster as Element;
+  // 守卫:非法 dayMaster 在此 fail-fast,而非深入 classifyRelation 后以晦涩 TypeError 炸出。
+  if (!ALL_ELEMENTS.includes(dayMaster)) {
+    throw new Error(`Invalid dayMaster: ${JSON.stringify(input.dayMaster)}`);
+  }
   const favourable = input.favourableElements as Element[];
   const avoid = input.avoidElements as Element[];
   const isBalanced = avoid.length === 0;

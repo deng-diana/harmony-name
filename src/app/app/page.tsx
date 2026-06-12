@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
   calculateBazi,
@@ -58,7 +58,21 @@ export default function Home() {
 
   const { playingNameIndex, handlePlayName } = useTTS();
 
+  // 取消生成中的 SSE 流(卸载/导航/重开/Start over)—— 防僵尸 setState、连接泄漏、
+  // 两条并发流交错写 state。卸载时也中止。
+  const abortRef = useRef<AbortController | null>(null);
+  // 卸载时中止并置 null —— 置 null 让 fetch finally 的 `abortRef.current === ac` 守卫失效,
+  // 从而不在已卸载组件上 setState / router.refresh(主动中止不该有副作用)。
+  useEffect(
+    () => () => {
+      abortRef.current?.abort();
+      abortRef.current = null;
+    },
+    []
+  );
+
   const handleCalculate = async () => {
+    if (isNamesLoading) return; // 兜底:防重复提交(两条流 → 双扣积分 + 状态交错)
     setFormError(null);
     // 原生日期框只要没填完整(如只填了年月没填日),value 就是空字符串
     if (!birthDate) {
@@ -117,11 +131,17 @@ export default function Home() {
     //   1. fetch 发 POST 请求，后端返回 text/event-stream
     //   2. 用 ReadableStream reader 逐行读取
     //   3. 每收到一行 "data: {...}" 就解析并更新 UI
+    // 新请求前中止上一条流(若有),并新建控制器供本次取消。
+    abortRef.current?.abort();
+    const ac = new AbortController();
+    abortRef.current = ac;
+
     try {
       setProgress({ step: 0, total: 4, message: "Connecting..." });
 
       const response = await fetch("/api/generate", {
         method: "POST",
+        signal: ac.signal,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           wuxing: result.wuxing,
@@ -195,8 +215,6 @@ export default function Home() {
               });
             } else if (parsed.type === "result") {
               setAiData(parsed.data);
-              // 余额已变,刷新顶栏的积分显示(重新执行 server layout)
-              router.refresh();
             } else if (parsed.type === "error") {
               // 绝不向用户暴露内部报错细节(API key、堆栈等);失败已自动退款
               setError(
@@ -209,14 +227,16 @@ export default function Home() {
         }
       }
     } catch (e: unknown) {
+      // 主动取消(卸载/重开/Start over)不是错误,静默 return,不写已重置的 state。
+      if (e instanceof DOMException && e.name === "AbortError") return;
       console.error("Request failed:", e);
-      setError(
-        e instanceof Error
-          ? e.message
-          : "The ancient oracle is momentarily silent. Please try again."
-      );
+      setError("The ancient oracle is momentarily silent. Please try again.");
     } finally {
-      setIsNamesLoading(false);
+      // 只有"还是本次请求"时才收尾(被新请求 abort 的旧流不该动 state)。
+      if (abortRef.current === ac) {
+        setIsNamesLoading(false);
+        router.refresh(); // 无论成功/错误/断流,结束时都向服务端对一次积分余额
+      }
     }
   };
 
@@ -295,6 +315,9 @@ export default function Home() {
           <div className="text-center pt-12 pb-24">
             <button
               onClick={() => {
+                abortRef.current?.abort(); // 中止仍在跑的流,避免它稍后把名字写回已重置的表单
+                abortRef.current = null; // 置 null:让旧流的 finally 守卫失效,不再 refresh
+                setIsNamesLoading(false);
                 setPhase("form");
                 setAiData(null);
                 window.scrollTo(0, 0);
@@ -409,9 +432,11 @@ export default function Home() {
 
         <button
           onClick={handleCalculate}
-          className="w-full bg-stone-900 text-white py-4 rounded-xl font-bold text-lg hover:bg-stone-800 hover:scale-[1.02] active:scale-[0.98] transition-all shadow-xl flex items-center justify-center gap-2"
+          disabled={isNamesLoading}
+          className="w-full bg-stone-900 text-white py-4 rounded-xl font-bold text-lg hover:bg-stone-800 hover:scale-[1.02] active:scale-[0.98] transition-all shadow-xl flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:scale-100"
         >
-          Reveal My Destiny Name <ArrowRight className="w-5 h-5" />
+          {isNamesLoading ? "Generating…" : "Reveal My Destiny Name"}
+          <ArrowRight className="w-5 h-5" />
         </button>
       </div>
     </div>

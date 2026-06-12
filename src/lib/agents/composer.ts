@@ -5,7 +5,7 @@
  *   - 只能从【候选池】(真实诗句,带 id)里选字,按编号引用;
  *   - 输出 charSpan(从某真句里取的连续片段)+ givenChars,绝不输出诗句原文/出处;
  *   - 出处由代码事后按 lineId 从 DB 回填 → 造假在结构上不可能(见 verify.ts / 编排层)。
- * 过量生成 6 个候选,留给硬校验 + 评审先生筛选。
+ * 过量生成 8 个候选,留给硬校验 + 评审先生筛选。
  */
 import { getClaude } from "../claude";
 import type { ScoredPoem } from "../retriever";
@@ -29,6 +29,7 @@ export interface ComposerCandidate extends NameCandidate {
   meanings?: Record<string, string>; // 字 → 英文释义(填 anatomy;五行/拼音由代码补)
   tonePattern?: string; // 英文:声调走势
   masterComment?: string; // 英文:点评为何出色
+  rescueNote?: string; // 内部:确定性救援的诚实标注(系统兜底姓/放宽性别),critic 覆盖 masterComment 时须保留追加
 }
 
 const MODEL = "claude-sonnet-4-20250514";
@@ -47,7 +48,7 @@ ALL prose output (analysis, rationale, translation) MUST be in ENGLISH. The only
 2. For each candidate you MUST return "lineId" = the id of the pool line you took the characters from, and "charSpan" = a CONTIGUOUS substring of that exact line text (copy it verbatim, including the characters you use).
 3. Every character in "givenChars" MUST appear inside your "charSpan".
 4. You output NO poem text, NO source/title/author, NO full line — only lineId + charSpan + the chars. (The system fills the real citation from the database.)
-5. Prefer a charSpan that is a meaningful 2-character word/image occurring contiguously in one line (e.g. 清明, 明月, 望舒, 自清) — this is the gold standard (又真又美).
+5. Prefer a charSpan that is a meaningful 2-character word/image occurring contiguously in one line (e.g. 明月, 松月, 青溪, 清涟) — this is the gold standard (又真又美). (Do NOT use 清明 — it reads as the 节气/Tomb-Sweeping festival.)
 6. The two given characters need NOT be directly adjacent: your charSpan MAY include ONE intervening FUNCTION WORD (之/而/以/兮/于…) which you then DROP from givenChars — e.g. charSpan "清之涟" → givenChars ["清","涟"] → name 清涟. ONLY a function word may be skipped (never a content character). Keep the span tight (≤ 8 characters).
 
 === NAMING CRAFT (make names 讲究 and natural, never weird) ===
@@ -56,7 +57,7 @@ ALL prose output (analysis, rationale, translation) MUST be in ENGLISH. The only
 • 字义: the two given characters should form a coherent word or image (成词/成意象), not a random pretty pair. Positive, dignified meaning. Screen the FULL name (surname+given) for embarrassing homophones (谐音).
 • 字形: avoid two given chars sharing the same radical (e.g. both 氵). No obscure (生僻) or ambiguous polyphonic (多音) characters.
 • 性别 (gender) — THIS IS A HARD RULE, not a soft prior (男楚辞 / 女诗经):
-   - FEMALE names should be built from feminine or graceful-neutral characters and imagery: 草木/花/月/露/柔光/婉约/玉 (e.g. 芷 萱 蕊 莲 蓉 薇 兰 晗 昕 昭 暖 晴 晨 语 笙 瑶 玥 珺 漪 沁 雯 棠 念 晚 映). Graceful-NEUTRAL chars (晴 晨 清 思 安 宁 怡) are fine for women when paired with a feminine character. But do NOT use strongly masculine chars — 光 昊 旭 景 峰 岳 崇 嵩 浩 涛 渊 钢 锋 锐 钧 雄 武 强 (and avoid plain-masculine pairs like 明). Good female examples: 芷晗, 语笙, 沁瑶, 晴雯, 棠玥. Bad (reject for female): 光明, 浩然, 峰岳 — masculine.
+   - FEMALE names should be built from feminine or graceful-neutral characters and imagery: 草木/花/月/露/柔光/婉约/玉 (e.g. 芷 蕊 莲 蓉 薇 兰 昭 暖 晴 晨 笙 瑶 漪 沁 棠 映 婵 娟). Graceful-NEUTRAL chars (晴 晨 清 思 安 宁 怡) are fine for women when paired with a feminine character. But do NOT use strongly masculine chars — 光 昊 旭 景 峰 岳 崇 嵩 浩 涛 渊 钢 锋 锐 钧 雄 武 强 (and avoid plain-masculine pairs like 明). Good female examples: 芷昭, 笙瑶, 沁漪, 晴棠, 婵娟. Bad (reject for female): 光明, 浩然, 峰岳 — masculine.
    - MALE names should use aspiration / landscape / strength / bright-hard imagery: 昊 旭 景 峰 岳 崇 浩 涛 渊 钧 锐 锋 铭 松 柏. Avoid clearly feminine-coded chars (娇 媚 婷 蕊 莺 婉 妍) for males. Good male examples: 景渊, 浩然, 松柏, 钧朗. Bad (reject for male): 婉蕊, 媚娇.
    - When in doubt for a FEMALE, choose the softer/floral/lunar character over a bright-hard or plain one. A name that could read as a man's name is a FAILURE for a female request.
 • 现代美感: timeless and legible; avoid dated (淑/芳/国/强) and over-trendy (梓/萱/轩) characters.
@@ -65,7 +66,7 @@ ALL prose output (analysis, rationale, translation) MUST be in ENGLISH. The only
 === PROCESS (think before you pick — this is what makes names 自然 vs 硬凑) ===
 For EACH candidate: FIRST decide the imagery you want for this person (their gender + favourable element), THEN find a pool line whose OVERALL MOOD matches that imagery, THEN take the characters from it. Do NOT scan the pool for any line that merely CONTAINS a favourable character and harvest it — that produces lifeless, "borrowed-not-born" names.
 断章取义 is forbidden: never pull pretty characters out of a line whose whole meaning is sorrowful, martial, mournful, or political (e.g. taking 山河 from "国破山河在" for a child). The characters must feel BORN from that line's mood, not extracted against it.
-FORBIDDEN HARVESTS — a name is a PERSON'S name, never a 景物标签. Do NOT take as a given char: 器物/服饰 (床 裙 簟 衣 巾 炬 灯), 地名/景大词 (江城 千山 宇宙), 动词或残片 (透 度 望 落 照), 节气 (清明 谷雨), 颜色当尾字 (桃红 红裙), 形容/说理词 (明智 太清), 生僻难认 (芰 蘅). REJECT (these are FAILURES): 银床 红裙 菱透 宇宙 晓日 芰荷 杨柳 桂花 明智 清明. GOLD (成词成象、像真名): 松月 清泉 青溪 明月 涵虚 晓露 苍山.
+FORBIDDEN HARVESTS — a name is a PERSON'S name, never a 景物标签. Do NOT take as a given char: 器物/服饰 (床 裙 簟 衣 巾 炬 灯), 地名/景大词 (江城 千山 宇宙), 动词或残片 (透 度 望 落 照), 节气 (清明 谷雨), 颜色当尾字 (桃红 红裙), 形容/说理词 (明智 太清), 生僻难认 (芰 蘅). REJECT (these are FAILURES): 银床 红裙 菱透 宇宙 晓日 芰荷 杨柳 桂花 明智 清明. GOLD (成词成象、像真名): 松月 清泉 青溪 明月 晓露 月华.
 Self-check: for each candidate, state in "impliedWord" the real Chinese word OR coherent image the given characters form together. If you cannot state a real word or a coherent, nameable image — DISCARD that candidate and pick another. A random-but-pretty pair is a FAILURE, not a candidate.
 
 === OUTPUT (return ONLY this JSON, no markdown, no extra text) ===
@@ -165,6 +166,12 @@ export async function runComposer(
     messages: [{ role: "user", content: userMessage }],
   });
 
+  // max_tokens 截断 → JSON 必残缺 → 解析得 0 候选,会被误当"全不合格"白烧一整轮兜底。
+  // 显式记录此可区分的失败模式(配合 finding#2 的瘦候选方案,根因也会缓解)。
+  if (message.stop_reason === "max_tokens") {
+    console.warn("Composer output truncated (max_tokens) — candidate JSON likely incomplete");
+  }
+
   const textBlock = message.content.find((b) => b.type === "text");
   const content = textBlock && "text" in textBlock ? textBlock.text : "";
 
@@ -179,6 +186,7 @@ export async function runComposer(
           givenChars: Array.isArray(c.givenChars)
             ? (c.givenChars as unknown[]).map(String)
             : [],
+          impliedWord: c.impliedWord ? String(c.impliedWord) : undefined,
           poeticMeaning: c.poeticMeaning ? String(c.poeticMeaning) : undefined,
           translation: c.translation ? String(c.translation) : undefined,
           meanings:

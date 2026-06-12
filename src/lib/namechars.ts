@@ -65,6 +65,28 @@ export function isForbiddenGivenName(givenChars: string[]): boolean {
   return FORBIDDEN_GIVEN_NAMES.has(givenChars.join(""));
 }
 
+// 名人/历史人物全名 + 谐音忌名 —— 取名"一票否决"项,确定性可堵。
+const CELEBRITY_NAMES = new Set<string>(
+  ((blacklistData as Record<string, unknown>).celebrityFullNames as string[]) ?? []
+);
+const FORBIDDEN_NAME_SOUNDS = new Set<string>(
+  ((blacklistData as Record<string, unknown>).forbiddenNameSounds as string[]) ?? []
+);
+
+/** 全名(姓+给定名)是否撞名人/历史人物(给老外起"王维/李白"是玩笑名)。 */
+export function isCelebrityName(surname: string, givenChars: string[]): boolean {
+  return CELEBRITY_NAMES.has(surname + givenChars.join(""));
+}
+
+/** 全名【带声调拼音(数字调)】拼接是否撞谐音忌名(吴+晴=wu2qing2=无情;吴清=wu2qing1 不撞)。 */
+export function isForbiddenNameSound(surname: string, givenChars: string[]): boolean {
+  const sound = [surname, ...givenChars]
+    .map((c) => (pinyin(c, { toneType: "num", type: "string" }) as string).trim())
+    .join("")
+    .toLowerCase();
+  return FORBIDDEN_NAME_SOUNDS.has(sound);
+}
+
 // 性别倾向(positive signal,见 name-chars.json _genderLean)。两表互斥;
 // 未列入者为中性。女名排除 masculineLean、男名排除 feminineLean,其余按
 // 同性别 > 中性 排序 —— 给取名先生一个真正"偏向"的候选字池,而非仅靠硬黑名单。
@@ -113,7 +135,7 @@ const EXTRA_ELEMENTS: Record<string, ElementEN> = {
   // 注:`若` 在黑名单 functionWords(虚词"假设/如同"),故不收 —— 避免与黑名单互冲。
   梧: "Wood", 梅: "Wood", 桑: "Wood", 杉: "Wood", 杏: "Wood",
   柳: "Wood", 槐: "Wood", 椿: "Wood", 桥: "Wood", 棣: "Wood",
-  华: "Wood", 嘉: "Wood", 颖: "Wood",
+  华: "Wood", 颖: "Wood",
   芃: "Wood", 苡: "Wood", 风: "Wood",
   // Fire — 火/灬/日 部 或 字义光/赤
   // 注:`紫` 流派分歧(红+蓝,有归火/金/水多说),故不收。
@@ -123,6 +145,10 @@ const EXTRA_ELEMENTS: Record<string, ElementEN> = {
   峦: "Earth", 嵋: "Earth", 砚: "Earth",
   // Metal — 钅 部 或 字义白/秋/玉饰
   钫: "Metal", 鋆: "Metal",
+  // 好名字表(_neutralNameChars)里【五行无争议】的字 —— 补五行供"忌神"硬拦识别
+  // (字义优先口径:凌=冰→水、诗/真→金(言旁/传统归金)、琴→木)。仅影响识别/校验,不进候选池。
+  // 月/思/影、以及【流派分歧】的 静(金/木)、灵(火/水)等不标(与既有口径一致,免与用户流派相左)。
+  凌: "Water", 诗: "Metal", 真: "Metal", 琴: "Wood",
 };
 
 export function elementOfChar(c: string): ElementEN | undefined {

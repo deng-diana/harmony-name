@@ -54,24 +54,55 @@ export interface ScoredPoem {
 // 命中后省掉一次 OpenAI Embedding 调用 + 一次数据库往返 → 更快、更省。
 // 生产用 Upstash KV(跨实例共享、持久);本地无 Upstash 时退回进程内 Map。
 //
-// CACHE_VERSION:ScoredPoem schema 变更时 bump。当前 v2 = chunkId 字段加入后的版本;
-// 旧版 v1 缓存条目缺 chunkId → buildVerifiedPool 会把整组 semantic-arm 结果过滤掉。
-// 任何对 ScoredPoem 形状的破坏性变更都必须 bump 此版本号。
-const CACHE_VERSION = "v3";
+// CACHE_VERSION:【任何影响返回内容的变更都必须 bump】—— 不只是 ScoredPoem 形状,
+// 还包括:RPC 重定义(如 008 改 fame 权重 0.3→0.2)、fame_score 重灌、DB 侧前置过滤变更。
+// 否则旧权重/旧数据的条目会继续命中最长 30 天 → 缓存毒化。
+//   v2=chunkId 字段;v3=字库重建;v4=008 fame 权重 0.8/0.2(本次审计补 bump)。
+const CACHE_VERSION = "v4";
 const poemCache = new Map<string, ScoredPoem[]>();
+const POEM_CACHE_MAX = 500;
+
+// 进程内缓存(无 Upstash 时)加 FIFO 上限 —— Map 迭代序=插入序,删最旧,防长驻进程泄漏。
+function localCacheSet(key: string, val: ScoredPoem[]): void {
+  if (poemCache.size >= POEM_CACHE_MAX) {
+    const oldest = poemCache.keys().next().value;
+    if (oldest !== undefined) poemCache.delete(oldest);
+  }
+  poemCache.set(key, val);
+}
+
+// redis 操作【包安全】:Upstash 瞬时故障只当 cache miss / 跳过写入,绝不连累已成功的
+// DB 检索(尤其 set 是在拿到结果【之后】,裸 await 失败会毁掉一次成功请求)。
+async function cacheGet(key: string): Promise<ScoredPoem[] | null> {
+  if (redis) {
+    try {
+      return (await redis.get<ScoredPoem[]>(key)) ?? null;
+    } catch (e) {
+      console.warn("redis get failed (miss):", e instanceof Error ? e.message : e);
+      return null;
+    }
+  }
+  return poemCache.get(key) ?? null;
+}
+async function cacheSet(key: string, val: ScoredPoem[]): Promise<void> {
+  if (redis) {
+    try {
+      await redis.set(key, val, { ex: 60 * 60 * 24 * 30 });
+    } catch (e) {
+      console.warn("redis set failed (skip):", e instanceof Error ? e.message : e);
+    }
+  } else {
+    localCacheSet(key, val);
+  }
+}
 
 export async function searchPoems(
   query: string,
   topK: number = 10
 ): Promise<ScoredPoem[]> {
   const cacheKey = `poems:${CACHE_VERSION}:${query}:${topK}`;
-  if (redis) {
-    const hit = await redis.get<ScoredPoem[]>(cacheKey);
-    if (hit) return hit;
-  } else {
-    const hit = poemCache.get(cacheKey);
-    if (hit) return hit;
-  }
+  const cached = await cacheGet(cacheKey);
+  if (cached) return cached;
 
   // Step 1: 把查询文本变成向量
   // "水 木 春天 润泽" → [0.012, -0.034, 0.056, ...] (1536个浮点数)
@@ -131,11 +162,7 @@ export async function searchPoems(
   }));
 
   // 只缓存成功结果(出错时上面已 return [],不会污染缓存)
-  if (redis) {
-    await redis.set(cacheKey, results, { ex: 60 * 60 * 24 * 30 }); // 30 天
-  } else {
-    poemCache.set(cacheKey, results);
-  }
+  await cacheSet(cacheKey, results);
   return results;
 }
 
@@ -159,13 +186,8 @@ export async function searchLinesByChars(
   if (uniq.length === 0) return [];
 
   const cacheKey = `lines:${CACHE_VERSION}:${[...uniq].sort().join("")}:${topK}`;
-  if (redis) {
-    const hit = await redis.get<ScoredPoem[]>(cacheKey);
-    if (hit) return hit;
-  } else {
-    const hit = poemCache.get(cacheKey);
-    if (hit) return hit;
-  }
+  const cached = await cacheGet(cacheKey);
+  if (cached) return cached;
 
   const { data, error } = await getSupabaseAdmin().rpc("search_lines_by_chars", {
     chars: uniq,
@@ -191,11 +213,7 @@ export async function searchLinesByChars(
     })
   );
 
-  if (redis) {
-    await redis.set(cacheKey, results, { ex: 60 * 60 * 24 * 30 });
-  } else {
-    poemCache.set(cacheKey, results);
-  }
+  await cacheSet(cacheKey, results);
   return results;
 }
 
@@ -212,7 +230,7 @@ export async function buildVerifiedPool(opts: {
   perArm?: number;
   cap?: number;
 }): Promise<ScoredPoem[]> {
-  const perArm = opts.perArm ?? 20;
+  const perArm = opts.perArm ?? 26; // 略高于 cap:补偿下方"每作者≤4/每诗≤2"配额的损耗,使池仍能填向 cap
   const cap = opts.cap ?? 30;
 
   const [byChars, bySem] = await Promise.all([
@@ -234,13 +252,24 @@ export async function buildVerifiedPool(opts: {
     if (i < byLo.length) interleaved.push(byLo[i]);
   }
 
+  // 多样性配额(防"王维同质化"):同一首诗最多 2 句、同一作者最多 4 句进池 ——
+  // 否则王维《山居秋暝》一首就能霸占大半个池子,导致不同命主反复拿到同一组名字。
+  const PER_POEM = 2;
+  const PER_AUTHOR = 4;
   const seen = new Set<number>();
+  const poemCount = new Map<string, number>();
+  const authorCount = new Map<string, number>();
   const pool: ScoredPoem[] = [];
   for (const p of [...byHi, ...interleaved]) {
     if (p.chunkId == null || seen.has(p.chunkId)) continue;
     const text = p.chunkText || "";
     if (text.length === 0 || text.length > MAX_POOL_LINE_LEN) continue; // 滤掉散文长段
+    const pk = `${p.author}《${p.title}》`;
+    if ((poemCount.get(pk) ?? 0) >= PER_POEM) continue;
+    if ((authorCount.get(p.author) ?? 0) >= PER_AUTHOR) continue;
     seen.add(p.chunkId);
+    poemCount.set(pk, (poemCount.get(pk) ?? 0) + 1);
+    authorCount.set(p.author, (authorCount.get(p.author) ?? 0) + 1);
     pool.push(p);
     if (pool.length >= cap) break;
   }

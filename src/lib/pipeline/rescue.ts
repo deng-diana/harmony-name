@@ -15,6 +15,7 @@ import {
   elementOfChar,
   isGenderForbidden,
   isHardBlacklisted,
+  isNameSuitable,
 } from "../namechars";
 import type { ComposerCandidate } from "../agents/composer";
 
@@ -70,6 +71,7 @@ export function rescueDeterministic(
         if (usedChars.has(ch) || ch === surnameChar) continue;
         const el = elementOfChar(ch);
         if (!pass.elementOk(el)) continue;
+        if (!isNameSuitable(ch)) continue; // 预剪枝:EXTRA-only 字(霞/梅/玉)必被 verify ③a 拒,跳过空跑
         // 硬不变量:黑名单 / 硬性别禁用 —— 任何 pass 都不放宽
         if (isHardBlacklisted(ch)) continue;
         if (ctx.gender && isGenderForbidden(ch, ctx.gender)) continue;
@@ -84,6 +86,9 @@ export function rescueDeterministic(
           masterComment: `A graceful single-character name (姓+1),verifiably grounded in a real ${line.dynasty}-dynasty line.${
             pass.relaxed ? relaxedNote : ""
           }${fallbackNote}`,
+          // 诚实标注另存一份:critic 若覆盖 masterComment(rescued 候选进 Critic 时),
+          // orchestrate 会把 rescueNote 追加回去,确保"系统兜底姓/放宽性别"披露不丢失。
+          rescueNote: `${pass.relaxed ? relaxedNote : ""}${fallbackNote}`.trim() || undefined,
         };
         // 用本 pass 的 vctx 校验:放宽 pass 会带 allowGenderLean,让偏阳字通过软性别关;
         // 但接地/黑名单/硬性别禁用/五行/音律仍由 verifyCandidate 把守。
