@@ -134,6 +134,23 @@ export async function runNamingPipeline(
     verified = dedupe([...verified, ...passing(rescue.candidates, ctx)], ctx);
   }
 
+  // ③.5b 单字补缺(仅当双字拓宽后仍 <3):喜用神太窄、双字成词名确实凑不齐时,才允许
+  // 单字名(姓+1)补到 3 个 —— 双字已优先,单字是"万不得已"。此层放开 requireTwoGivenChars。
+  if (verified.length < 3) {
+    const singleFeedback =
+      `Still under 3 valid names — the favourable elements are too constrained for more ` +
+      `two-character names. Now produce SINGLE-character given names: surname + ONE favourable, ` +
+      `gender-appropriate character from a pool line (e.g. 苏瑶 苏昭 苏皎). Give 8.`;
+    const singleProfile: ComposerProfile = {
+      ...profile,
+      recommendedNameLength: "2 characters (Surname + 1 Name)",
+    };
+    const singleCtx: VerifyContext = { ...ctx, requireTwoGivenChars: false };
+    const rescue2 = await runComposer(singleProfile, pool, singleFeedback);
+    if (!analysis) analysis = rescue2.analysis;
+    verified = dedupe([...verified, ...passing(rescue2.candidates, singleCtx)], ctx);
+  }
+
   // ③.6 终极兜底(deterministic):仍 <3 → 纯代码从池子里扫"喜用神+性别合宜"的单字,
   // 与姓配成 2 字名,无需 LLM,几乎必过校验。点评/寓意用极简模板填充(诚实交代)。
   // 这是"always-3"的最终保险,只在 LLM 多次随机后仍凑不齐时启动。
