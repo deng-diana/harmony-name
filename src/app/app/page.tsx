@@ -23,6 +23,7 @@ import { NameCard } from "@/components/NameCard";
 import { CitySearch } from "@/components/CitySearch";
 import { SurnameSelector } from "@/components/SurnameSelector";
 import { GenerationProgress } from "@/components/GenerationProgress";
+import { Button } from "@/components/ui/Button";
 
 export default function Home() {
   const router = useRouter();
@@ -296,24 +297,31 @@ export default function Home() {
 
             <div className="grid gap-8">
               {aiData?.names?.map((name, index) => (
-                <NameCard
+                // 揭晓时刻:三个名字逐个"显形"(淡入+上浮+极轻放大),每张错峰 120ms。
+                <div
                   key={index}
-                  name={name}
-                  index={index}
-                  playingNameIndex={playingNameIndex}
-                  onPlayName={handlePlayName}
-                  archetype={
-                    ARCHETYPES[
-                      baziResult.dayMaster as keyof typeof ARCHETYPES
-                    ]
-                  }
-                />
+                  className="animate-reveal"
+                  style={{ animationDelay: `${index * 120}ms` }}
+                >
+                  <NameCard
+                    name={name}
+                    index={index}
+                    playingNameIndex={playingNameIndex}
+                    onPlayName={handlePlayName}
+                    archetype={
+                      ARCHETYPES[
+                        baziResult.dayMaster as keyof typeof ARCHETYPES
+                      ]
+                    }
+                  />
+                </div>
               ))}
             </div>
           </section>
 
           <div className="text-center pt-12 pb-24">
-            <button
+            <Button
+              variant="secondary"
               onClick={() => {
                 abortRef.current?.abort(); // 中止仍在跑的流,避免它稍后把名字写回已重置的表单
                 abortRef.current = null; // 置 null:让旧流的 finally 守卫失效,不再 refresh
@@ -322,11 +330,11 @@ export default function Home() {
                 setAiData(null);
                 window.scrollTo(0, 0);
               }}
-              className="inline-flex items-center gap-2 text-stone-500 hover:text-stone-900 transition px-6 py-3 rounded-full border border-stone-200 hover:bg-white hover:shadow-sm"
+              className="rounded-full text-ink-soft"
             >
               <RefreshCw className="w-4 h-4" /> Start over with different
               details
-            </button>
+            </Button>
           </div>
         </main>
       </div>
@@ -353,7 +361,7 @@ export default function Home() {
           </label>
           <input
             type="date"
-            className="w-full px-4 py-3 bg-white border border-stone-200 rounded-xl text-stone-900 focus:ring-2 focus:ring-stone-900 focus:border-transparent outline-none transition-all"
+            className="w-full px-4 py-3 bg-white border border-stone-200 rounded-xl text-stone-900 focus:ring-2 focus:ring-stone-900 focus:border-transparent outline-none transition-colors duration-200 ease-soft"
             value={birthDate}
             onChange={(e) => setBirthDate(e.target.value)}
           />
@@ -401,7 +409,7 @@ export default function Home() {
                 key={g}
                 type="button"
                 onClick={() => setGender(g)}
-                className={`flex-1 py-3 rounded-xl border text-sm font-bold transition-all ${
+                className={`flex-1 py-3 rounded-xl border text-sm font-bold transition-colors duration-200 ease-soft ${
                   gender === g
                     ? "border-stone-900 bg-stone-50 ring-2 ring-stone-900 text-stone-900"
                     : "border-stone-200 text-stone-500 hover:border-stone-300"
@@ -430,14 +438,15 @@ export default function Home() {
           </div>
         )}
 
-        <button
+        <Button
           onClick={handleCalculate}
-          disabled={isNamesLoading}
-          className="w-full bg-stone-900 text-white py-4 rounded-xl font-bold text-lg hover:bg-stone-800 hover:scale-[1.02] active:scale-[0.98] transition-all shadow-xl flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:scale-100"
+          loading={isNamesLoading}
+          size="lg"
+          className="w-full"
         >
           {isNamesLoading ? "Generating…" : "Reveal My Destiny Name"}
-          <ArrowRight className="w-5 h-5" />
-        </button>
+          {!isNamesLoading && <ArrowRight className="w-5 h-5" />}
+        </Button>
       </div>
     </div>
   );

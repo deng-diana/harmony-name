@@ -1,80 +1,133 @@
 @import "tailwindcss";
 
+/* =====================================================================
+   设计令牌 (design tokens) —— 全站单一真相来源。改一处,全站生效。
+   Tailwind v4 @theme:这里定义的令牌会自动生成工具类:
+     --color-paper → bg-paper/text-paper/border-paper
+     --ease-soft   → ease-soft
+     --animate-reveal → animate-reveal
+   美学保持原有"水墨暖色"(宣纸底 + 墨色字 + 暖金印章点缀),只是系统化。
+   ===================================================================== */
+@theme {
+  /* —— 品牌色板(语义命名,不再散落 stone-900/amber-xxx)—— */
+  --color-paper: #fdfbf7;        /* 宣纸底色:页面背景 */
+  --color-paper-raised: #ffffff; /* 抬起面:卡片背景 */
+  --color-ink: #1c1917;          /* 墨色:主文字(≈stone-900) */
+  --color-ink-soft: #57534e;     /* 淡墨:次要文字(≈stone-600) */
+  --color-ink-faint: #a8a29e;    /* 远墨:占位/辅助(≈stone-400) */
+  --color-mist: #e7e5e4;         /* 雾色:描边/分隔(≈stone-200) */
+  --color-gold: #b08d57;         /* 暖金:印章/重点点缀 */
+  --color-gold-soft: #d9c5a0;    /* 浅金:柔和强调 */
+
+  /* —— 动效缓动曲线(senior motion:克制、自然减速,少量弹性)—— */
+  --ease-soft: cubic-bezier(0.22, 1, 0.36, 1);      /* 优雅减速(揭晓/入场首选) */
+  --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);  /* 轻微回弹(点击/勾选微动) */
+
+  /* —— 入场/微交互动画 —— */
+  --animate-fade-in: fade-in var(--dur-slow) var(--ease-soft) both;
+  --animate-fade-in-up: fade-in-up var(--dur-slow) var(--ease-soft) both;
+  --animate-reveal: reveal var(--dur-reveal) var(--ease-soft) both;
+}
+
+/* —— 动效时长(语义化,统一节奏;供 transition/animation 复用)—— */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --dur-fast: 150ms;   /* 微交互:颜色/透明度 */
+  --dur-base: 250ms;   /* 标准:位移/缩放 */
+  --dur-slow: 450ms;   /* 入场 */
+  --dur-reveal: 650ms; /* 名字揭晓(更舒展) */
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
+/* 修复:旧 body{font-family:Arial} 把 layout 设的 Lora 衬线字体整个覆盖了
+   (全站本应是优雅的 Lora,却显示成 Arial)。删除该覆盖,让 Lora 正常生效。
+   layout.tsx 已把 lora.className 挂到 body,这里只补抗锯齿与文本渲染优化。 */
 body {
-  font-family: Arial, Helvetica, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
-/* Remove left and top positioning from nextjs-portal elements */
+/* nextjs dev portal 定位修正(保留) */
 nextjs-portal {
   left: unset;
   top: unset;
 }
 
-.card-shadow-soft {
-  box-shadow: 0 2px 8px rgba(235, 220, 195, 0.3),
-    0 4px 16px rgba(235, 220, 195, 0.15);
+/* =====================================================================
+   动效工具类 —— 统一替代散落的 transition-all(反模式)。
+   只过渡【该过渡的属性】(颜色/形变/透明度),不碰布局,避免重排卡顿。
+   ===================================================================== */
+.transition-soft {
+  transition-property: color, background-color, border-color, opacity, box-shadow, transform;
+  transition-timing-function: var(--ease-soft);
+  transition-duration: var(--dur-base);
+}
+.transition-colors-soft {
+  transition-property: color, background-color, border-color;
+  transition-timing-function: var(--ease-soft);
+  transition-duration: var(--dur-fast);
 }
 
-.card-shadow-soft-hover {
-  box-shadow: 0 4px 16px rgba(235, 220, 195, 0.4),
-    0 8px 24px rgba(235, 220, 195, 0.2);
+/* —— 自定义阴影(暖色柔光,作为令牌复用)—— */
+.shadow-soft {
+  box-shadow: 0 2px 8px rgba(176, 141, 87, 0.12), 0 4px 16px rgba(176, 141, 87, 0.08);
+}
+.shadow-soft-lifted {
+  box-shadow: 0 8px 24px rgba(176, 141, 87, 0.16), 0 16px 40px rgba(176, 141, 87, 0.1);
 }
 
-/* 入场动效 —— 这些 utility 之前被引用但从未定义,动画其实没生效。
-   现补上,克制(短位移 + ease-out),并尊重 prefers-reduced-motion。 */
+/* =====================================================================
+   关键帧
+   ===================================================================== */
 @keyframes fade-in {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
-
 @keyframes fade-in-up {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+/* 名字揭晓:淡入 + 上浮 + 极轻微放大,像从纸面"显形"。 */
+@keyframes reveal {
+  from { opacity: 0; transform: translateY(16px) scale(0.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+/* 加载占位的"微光扫过"(skeleton shimmer)。 */
+@keyframes shimmer {
+  from { background-position: -180% 0; }
+  to { background-position: 180% 0; }
 }
 
-.animate-fade-in {
-  animation: fade-in 0.8s ease-out both;
+.animate-fade-in { animation: var(--animate-fade-in); }
+.animate-fade-in-up { animation: var(--animate-fade-in-up); }
+.animate-reveal { animation: var(--animate-reveal); }
+
+/* 入场错峰延迟(配合 scroll/揭晓做 stagger) */
+.delay-100 { animation-delay: 0.1s; }
+.delay-200 { animation-delay: 0.2s; }
+.delay-300 { animation-delay: 0.3s; }
+.delay-500 { animation-delay: 0.5s; }
+
+/* skeleton 微光条 */
+.shimmer {
+  background-image: linear-gradient(
+    100deg,
+    rgba(231, 229, 228, 0) 30%,
+    rgba(217, 197, 160, 0.35) 50%,
+    rgba(231, 229, 228, 0) 70%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.6s var(--ease-soft) infinite;
 }
 
-.animate-fade-in-up {
-  animation: fade-in-up 0.7s ease-out both;
-}
-
-.delay-100 {
-  animation-delay: 0.1s;
-}
-.delay-200 {
-  animation-delay: 0.2s;
-}
-.delay-300 {
-  animation-delay: 0.3s;
-}
-
+/* =====================================================================
+   无障碍:尊重"减少动态效果"系统偏好 —— 一律降级为无动画/瞬时过渡。
+   ===================================================================== */
 @media (prefers-reduced-motion: reduce) {
-  .animate-fade-in,
-  .animate-fade-in-up {
-    animation: none;
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
   }
 }
