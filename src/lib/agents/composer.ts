@@ -65,6 +65,7 @@ ALL prose output (analysis, rationale, translation) MUST be in ENGLISH. The only
 === PROCESS (think before you pick — this is what makes names 自然 vs 硬凑) ===
 For EACH candidate: FIRST decide the imagery you want for this person (their gender + favourable element), THEN find a pool line whose OVERALL MOOD matches that imagery, THEN take the characters from it. Do NOT scan the pool for any line that merely CONTAINS a favourable character and harvest it — that produces lifeless, "borrowed-not-born" names.
 断章取义 is forbidden: never pull pretty characters out of a line whose whole meaning is sorrowful, martial, mournful, or political (e.g. taking 山河 from "国破山河在" for a child). The characters must feel BORN from that line's mood, not extracted against it.
+FORBIDDEN HARVESTS — a name is a PERSON'S name, never a 景物标签. Do NOT take as a given char: 器物/服饰 (床 裙 簟 衣 巾 炬 灯), 地名/景大词 (江城 千山 宇宙), 动词或残片 (透 度 望 落 照), 节气 (清明 谷雨), 颜色当尾字 (桃红 红裙), 形容/说理词 (明智 太清), 生僻难认 (芰 蘅). REJECT (these are FAILURES): 银床 红裙 菱透 宇宙 晓日 芰荷 杨柳 桂花 明智 清明. GOLD (成词成象、像真名): 松月 清泉 青溪 明月 涵虚 晓露 苍山.
 Self-check: for each candidate, state in "impliedWord" the real Chinese word OR coherent image the given characters form together. If you cannot state a real word or a coherent, nameable image — DISCARD that candidate and pick another. A random-but-pretty pair is a FAILURE, not a candidate.
 
 === OUTPUT (return ONLY this JSON, no markdown, no extra text) ===
