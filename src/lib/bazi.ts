@@ -262,13 +262,14 @@ function analyzeStrength(
   const ratio = support / (support + drain || 1); // 0~1
 
   let strength = "Balanced";
-  let nameLength = "2 or 3 characters";
+  // 名字字数【不由旺衰决定】—— 字数属姓名学/三才五格,与八字喜用神是两套体系,
+  // 旧逻辑(身强→2字)无子平依据,且是"名字有时只有2个字"的来源。统一推荐 3 字名
+  // (姓+2):双字名意象空间更大、更耐品、更有诗意;2 字名仅在候选池稀疏时由兜底产生。
+  const nameLength = "3 characters (Surname + 2 Names)";
   if (ratio >= STRONG_THRESHOLD) {
     strength = "Strong";
-    nameLength = "2 characters (Surname + 1 Name)";
   } else if (ratio < WEAK_THRESHOLD) {
     strength = "Weak";
-    nameLength = "3 characters (Surname + 2 Names)";
   }
 
   let favourable: string[] = [];
@@ -324,11 +325,20 @@ function analyzeStrength(
     CLIMATIC_BOOST[`${dayMaster}_${monthZhi}`] ??
     CLIMATIC_BOOST[`${dayMaster}_${season}`];
   if (boost) {
-    // ① 若与 avoid 冲突,移出 avoid(调候优先于扶抑对该元素的判定)
-    const idx = avoid.indexOf(boost);
-    if (idx !== -1) avoid.splice(idx, 1);
-    // ② 推入 favourable(若不在)
-    if (!favourable.includes(boost)) favourable.unshift(boost);
+    // 旺衰方向守卫(修复:旧逻辑无条件翻转,会把忌神当喜神)。
+    //   boost 属"生扶"(印 generatedBy / 比 dayMaster):只该补给【身弱/平衡】,身强补印比=火上浇油。
+    //   boost 属"克泄耗"(官杀/食伤/财):只该用于【身强/平衡】,身弱再泄=雪上加霜。
+    // 与当前旺衰冲突时,调候【不采纳】(既不进 favourable 也不进 avoid),绝不翻转喜忌。
+    const boostIsSupport = boost === dayMaster || boost === relations.generatedBy;
+    const conflict =
+      (boostIsSupport && strength === "Strong") ||
+      (!boostIsSupport && strength === "Weak");
+    if (!conflict) {
+      // 不冲突时:调候优先于扶抑对该元素的判定 —— 移出 avoid + 推入 favourable。
+      const idx = avoid.indexOf(boost);
+      if (idx !== -1) avoid.splice(idx, 1);
+      if (!favourable.includes(boost)) favourable.unshift(boost);
+    }
   }
 
   const favClean = [...new Set(favourable)].filter(Boolean);

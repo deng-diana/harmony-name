@@ -55,6 +55,16 @@ const genderForbidden = (
 const MALE_FORBIDDEN = new Set(genderForbidden.male);
 const FEMALE_FORBIDDEN = new Set(genderForbidden.female);
 
+// 整名禁用表:逐字都可入名,但组合是节气/地名/老气花色/形容词(清明/桂花/江城…),作名不佳。
+const FORBIDDEN_GIVEN_NAMES = new Set<string>(
+  ((blacklistData as Record<string, unknown>).forbiddenGivenNames as string[]) ?? []
+);
+
+/** 给定名(给定字拼起来)是否整体禁用(节气/地名/老气/形容词等)。 */
+export function isForbiddenGivenName(givenChars: string[]): boolean {
+  return FORBIDDEN_GIVEN_NAMES.has(givenChars.join(""));
+}
+
 // 性别倾向(positive signal,见 name-chars.json _genderLean)。两表互斥;
 // 未列入者为中性。女名排除 masculineLean、男名排除 feminineLean,其余按
 // 同性别 > 中性 排序 —— 给取名先生一个真正"偏向"的候选字池,而非仅靠硬黑名单。
@@ -64,6 +74,18 @@ const MASCULINE_LEAN = new Set<string>(
 const FEMININE_LEAN = new Set<string>(
   ((nameCharsData as Record<string, unknown>).feminineLean as string[]) ?? []
 );
+
+// "好名字表":适合做名字、但【不承载五行】的字(月/风/星/影/思…)。与五行表一起
+// 构成"名字适用字"全集。verify 用它挡掉 床/裙/透/宙 这类器物/动词字,同时不误杀
+// 月/松月 这类不属五行的好字(五行表只按金木水火土收字,本就漏掉这类)。
+const NEUTRAL_NAME_SET = new Set<string>(
+  ((nameCharsData as Record<string, unknown>)._neutralNameChars as string[]) ?? []
+);
+
+/** 该字是否"适合做名字"(在五行表 或 好名字表内)。给定字都须通过此关。 */
+export function isNameSuitable(c: string): boolean {
+  return charToElement.has(c) || NEUTRAL_NAME_SET.has(c);
+}
 
 /** 该字的性别倾向(显式列表;未列入者为 neutral)。 */
 export function genderLeanOf(c: string): "masculine" | "feminine" | "neutral" {

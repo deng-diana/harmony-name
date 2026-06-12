@@ -33,6 +33,9 @@ export function rescueDeterministic(
   const relaxedNote =
     " (Element-led fallback — the most fitting grounded characters for this rare chart lean slightly yang.)";
 
+  // 本兜底层【按设计产出单字名】(姓+1),故所有 pass 都关掉 requireTwoGivenChars,
+  // 否则生产 ctx 上的"强制双字名"会把这里自己的单字候选全拒掉 → always-3 落空。
+  const base: VerifyContext = { ...ctx, requireTwoGivenChars: false };
   const passes: {
     vctx: VerifyContext;
     elementOk: (el: string | undefined) => boolean;
@@ -40,19 +43,19 @@ export function rescueDeterministic(
   }[] = [
     // ① 喜用神 + 软性别合宜(默认)
     {
-      vctx: ctx,
+      vctx: base,
       elementOk: (el) => !!el && ctx.favourableElements.includes(el),
       relaxed: false,
     },
     // ② 喜用神 + 放宽软性别倾向(仍守硬性别禁用)
     {
-      vctx: { ...ctx, allowGenderLean: true },
+      vctx: { ...base, allowGenderLean: true },
       elementOk: (el) => !!el && ctx.favourableElements.includes(el),
       relaxed: true,
     },
     // ③ 病态兜底:非忌神 + 放宽软性别(几乎不触发)
     {
-      vctx: { ...ctx, allowGenderLean: true },
+      vctx: { ...base, allowGenderLean: true },
       elementOk: (el) => !!el && !ctx.avoidElements.includes(el),
       relaxed: true,
     },

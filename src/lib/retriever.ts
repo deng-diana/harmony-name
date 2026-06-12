@@ -57,7 +57,7 @@ export interface ScoredPoem {
 // CACHE_VERSION:ScoredPoem schema 变更时 bump。当前 v2 = chunkId 字段加入后的版本;
 // 旧版 v1 缓存条目缺 chunkId → buildVerifiedPool 会把整组 semantic-arm 结果过滤掉。
 // 任何对 ScoredPoem 形状的破坏性变更都必须 bump 此版本号。
-const CACHE_VERSION = "v2";
+const CACHE_VERSION = "v3";
 const poemCache = new Map<string, ScoredPoem[]>();
 
 export async function searchPoems(
@@ -213,7 +213,7 @@ export async function buildVerifiedPool(opts: {
   cap?: number;
 }): Promise<ScoredPoem[]> {
   const perArm = opts.perArm ?? 20;
-  const cap = opts.cap ?? 25;
+  const cap = opts.cap ?? 30;
 
   const [byChars, bySem] = await Promise.all([
     opts.favourableChars.length
@@ -222,10 +222,21 @@ export async function buildVerifiedPool(opts: {
     searchPoems(opts.imageryQuery, perArm),
   ]);
 
+  // 组装顺序(P1.5 意象优先):
+  //   ① byChars 里 coverage>=2 的【双字命中】句优先 —— 既接地、又更可能含成词片段。
+  //   ② 其余按 [语义(意象) ⇄ byChars 单字命中] 交替填充,确保"有意境的整句"不被
+  //      "恰好含某喜用字"的句子挤出候选池 —— 这正是"借字而非承境→名字不自然"的结构根因。
+  const byHi = byChars.filter((p) => (p.coverage ?? 0) >= 2);
+  const byLo = byChars.filter((p) => (p.coverage ?? 0) < 2);
+  const interleaved: ScoredPoem[] = [];
+  for (let i = 0; i < Math.max(bySem.length, byLo.length); i++) {
+    if (i < bySem.length) interleaved.push(bySem[i]);
+    if (i < byLo.length) interleaved.push(byLo[i]);
+  }
+
   const seen = new Set<number>();
   const pool: ScoredPoem[] = [];
-  // 先放"按字"(字在真句里,接地最强),再补"语义"
-  for (const p of [...byChars, ...bySem]) {
+  for (const p of [...byHi, ...interleaved]) {
     if (p.chunkId == null || seen.has(p.chunkId)) continue;
     const text = p.chunkText || "";
     if (text.length === 0 || text.length > MAX_POOL_LINE_LEN) continue; // 滤掉散文长段

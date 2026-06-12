@@ -41,6 +41,7 @@ Database schema lives in `supabase/migrations/001_create_poems_tables.sql`, then
 
 **Security hardening** — run in the Supabase SQL editor too:
 - `supabase/migrations/007_enable_rls_on_poems.sql` — enables RLS on `poems` / `poem_chunks` (built in 001, before auth existed, so they were the only public tables without RLS — Security Advisor flagged `rls_disabled_in_public`). No policy is added: both tables are read **only** via `supabaseAdmin` (service_role, which bypasses RLS), so deny-by-default for anon/authenticated is safe and closes the warning.
+- `supabase/migrations/008_rebalance_fame_weight.sql` — re-creates `search_poem_chunks` (the 005 text/chunk_id version) with the ranking weight changed from `0.7*similarity + 0.3*fame` to **`0.8*similarity + 0.2*fame`**. fame_score is poem-level, so 0.3 over-promoted mediocre lines from famous poems; 0.2 lets imagery relevance lead. Run in the SQL editor.
 
 ### MCP server
 

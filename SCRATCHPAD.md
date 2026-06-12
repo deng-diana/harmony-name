@@ -7,6 +7,51 @@
 
 ---
 
+## 2026-06-12 — naming-quality overhaul (BaZi fixes + grounded-name quality) `feat/name-quality-overhaul`
+
+Expert-panel-driven overhaul of the v2 naming pipeline. Multiple 国学 sub-agent
+workflows (char-library rebuild, name-suitable curation, 3-view quality panels) +
+9 eval rounds (`scripts/eval-names.ts`) drove the changes. **All target the v2
+pipeline — confirm `NAMING_PIPELINE_V2=true` in prod or none of this ships.**
+
+### BaZi correctness
+- Dropped the strength→name-length rule (字数 has no 子平 basis; was the source of
+  "sometimes only 2 chars"). Always recommend 3-char now.
+- Guarded 调候 from flipping 喜忌 (old code forced the climatic boost into favourable
+  unconditionally → 忌神 became 喜神 for some Strong/Weak × season cases). Added 喜忌
+  invariant regression tests (strength logic previously had ZERO assertions).
+
+### The big finding — char library rebuilt FROM the corpus (Direction A)
+The grounded pipeline can only use chars that actually appear in the 3,507-poem
+corpus, yet many popular name chars (煜/晗/昕/楠/钰…) have ZERO coverage — unusable.
+Per product decision, the char library is now **derived from the corpus** (国学
+expert panel + corpus-coverage verification gate that dropped every ungroundable
+char the experts re-added). Added a second list `_neutralNameChars` (好名字表) for
+name-suitable chars that carry no element (月/风/星/影…) so 松月/明月 aren't mis-killed.
+
+### Quality gates (verify / composer / critic)
+- verify: `isNameSuitable` (given chars must be in element-table ∪ 好名字表) blocks
+  器物/动词 harvests (床/裙/透/簟); `forbiddenGivenNames` blocks idiom/place/老气 combos
+  (清明 节气 / 桂花 / 红杏出墙 / 江城 / 金台…); `requireTwoGivenChars` forces 双字名 in
+  normal output (single-char only via the ③.6 deterministic backstop).
+- composer: `impliedWord` self-cert + FORBIDDEN HARVESTS list + over-generate 8.
+- critic: 意境承接 (imagery-coherence) dimension + NATURALNESS AUTO-REJECT.
+- orchestrate: dedupe by **given name** (was full name → 明月×3 with diff surnames);
+  ③.5 broadens for more 2-char instead of forcing single-char.
+- Migration 008: search_poem_chunks fame weight 0.3→0.2 (run in SQL editor).
+
+### Result (3-expert panel, round 9 vs round 1)
+good 8→**13**/24 · single-char 11→**5** · fabrication/object/idiom names → **0** ·
+always-3 **100%** · avg naturalness **6.1/10**. Residual: the 2 thinnest charts
+(narrow Metal/Earth favourable) still give plain single-char names — the corpus
+ceiling (user declined corpus expansion; merge-and-iterate chosen). 65/65 tests green.
+
+### ⚠️ Operational follow-ups
+1. Run `supabase/migrations/008_rebalance_fame_weight.sql` in the Supabase SQL editor.
+2. Confirm `NAMING_PIPELINE_V2=true` in Vercel prod (all changes are v2-only).
+
+---
+
 ## 2026-06-11 — fix Vercel Preview build failure + RLS hardening
 
 ### What landed (on `feat/element-compatibility`)

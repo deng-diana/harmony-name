@@ -12,6 +12,8 @@
 import type { ScoredPoem } from "./retriever";
 import {
   elementOfChar,
+  isNameSuitable,
+  isForbiddenGivenName,
   isHardBlacklisted,
   isFunctionWord,
   isSurnameBlacklisted,
@@ -39,6 +41,12 @@ export interface VerifyContext {
    * 硬性 genderForbidden(雄/霸/猛…)永远仍拦,不受此影响。
    */
   allowGenderLean?: boolean;
+  /**
+   * 生产层开启:正常只接受【双字给定名】(姓+2)。单字给定名(姓+1)整体质量塌方
+   * (国学评审 2026-06-12:单字名意境断裂、显单薄),故只允许在确定性兜底
+   * (orchestrate ③.6,不过此关)产出。默认 false(测试/兜底不受限)。
+   */
+  requireTwoGivenChars?: boolean;
 }
 
 export interface VerifyResult {
@@ -107,8 +115,29 @@ export function verifyCandidate(
     }
   }
 
-  // ③ 五行:至少一个名字字属喜用神;不得含忌神字
+  // ②c 整名禁用:逐字可入名,但组合是节气/地名/老气花色/形容词(清明/桂花/江城/明智…)。
+  if (isForbiddenGivenName(c.givenChars)) {
+    reasons.push(`「${c.givenChars.join("")}」整体不宜作名(节气/地名/老气/形容词等)`);
+  }
+
+  // ②d 强制双字名(生产层):单字名(姓+1)质量塌方,正常只收双字名(姓+2);
+  //     单字只在确定性兜底(③.6,不过此关)作为 always-3 的最后保险。
+  if (ctx.requireTwoGivenChars && c.givenChars.length !== 2) {
+    reasons.push(`需双字名(姓+2),当前给定 ${c.givenChars.length} 字`);
+  }
+
+  // ③ 名字适用性 + 五行
   const elems = c.givenChars.map(elementOfChar);
+  // ③a 每个名字字必须"适合做名字"(在五行表 或 好名字表内)。否则取名先生会从诗句里
+  //     抠出 床/裙/透/宙/鼎/簟 这类器物/物象/动词残片当字 —— 确定性校验(引用/五行/
+  //     always-3)抓不到,但国学评审一致判为坏名(2026-06-12 验收)。好名字表含 月/风/星
+  //     等不属五行但适合入名的字,故不会误杀 松月/明月 这类好名字。
+  for (const ch of c.givenChars) {
+    if (!isNameSuitable(ch)) {
+      reasons.push(`「${ch}」非名字适用字(疑似从诗句抠出的器物/物象/动词字)`);
+    }
+  }
+  // ③b 至少一个名字字属喜用神;不得含忌神字
   if (!elems.some((e) => e && ctx.favourableElements.includes(e))) {
     reasons.push(`无名字字属喜用神(${ctx.favourableElements.join("/") || "—"})`);
   }

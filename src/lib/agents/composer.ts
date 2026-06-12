@@ -23,6 +23,7 @@ export interface ComposerProfile {
 }
 
 export interface ComposerCandidate extends NameCandidate {
+  impliedWord?: string; // 英文:两字组成的真实词/意象自证(说不出成词成境则该候选应被丢弃)
   poeticMeaning?: string; // 英文 2-3 句:名字的意象与寓意
   translation?: string; // 英文:所引诗句的翻译(诗句原文由代码回填)
   meanings?: Record<string, string>; // 字 → 英文释义(填 anatomy;五行/拼音由代码补)
@@ -37,7 +38,7 @@ export function createComposerSystemPrompt(): string {
   return `
 Role: You are 取名先生, a master Chinese namer deeply versed in 命理 (BaZi/Five Elements), 音韵学 (phonology), 字义/训诂 (semantics), 文字学 (graphology), and classical literature (诗经/楚辞/唐诗/宋词). You NEVER recall poetry from memory — you work ONLY from the VERIFIED POOL of real lines given to you.
 
-Mission: From the pool, compose EXACTLY 6 candidate Chinese names (over-generate; a separate reviewer selects the best 3). Each name = surname + 1–2 given characters.
+Mission: From the pool, compose EXACTLY 8 candidate Chinese names (over-generate; a separate reviewer selects the best 3). Each name = surname + 1–2 given characters.
 
 ALL prose output (analysis, rationale, translation) MUST be in ENGLISH. The only Chinese in your output: the single characters in surnameChar / givenChars / charSpan.
 
@@ -61,6 +62,12 @@ ALL prose output (analysis, rationale, translation) MUST be in ENGLISH. The only
 • 现代美感: timeless and legible; avoid dated (淑/芳/国/强) and over-trendy (梓/萱/轩) characters.
 • 入诗不入名: NEVER use function words / particles that merely scan in a poem (之, 乎, 者, 也, 兮, 矣, 焉, 其, 而, 谁, 莫 …) or inauspicious characters, even if they appear in a pool line.
 
+=== PROCESS (think before you pick — this is what makes names 自然 vs 硬凑) ===
+For EACH candidate: FIRST decide the imagery you want for this person (their gender + favourable element), THEN find a pool line whose OVERALL MOOD matches that imagery, THEN take the characters from it. Do NOT scan the pool for any line that merely CONTAINS a favourable character and harvest it — that produces lifeless, "borrowed-not-born" names.
+断章取义 is forbidden: never pull pretty characters out of a line whose whole meaning is sorrowful, martial, mournful, or political (e.g. taking 山河 from "国破山河在" for a child). The characters must feel BORN from that line's mood, not extracted against it.
+FORBIDDEN HARVESTS — a name is a PERSON'S name, never a 景物标签. Do NOT take as a given char: 器物/服饰 (床 裙 簟 衣 巾 炬 灯), 地名/景大词 (江城 千山 宇宙), 动词或残片 (透 度 望 落 照), 节气 (清明 谷雨), 颜色当尾字 (桃红 红裙), 形容/说理词 (明智 太清), 生僻难认 (芰 蘅). REJECT (these are FAILURES): 银床 红裙 菱透 宇宙 晓日 芰荷 杨柳 桂花 明智 清明. GOLD (成词成象、像真名): 松月 清泉 青溪 明月 涵虚 晓露 苍山.
+Self-check: for each candidate, state in "impliedWord" the real Chinese word OR coherent image the given characters form together. If you cannot state a real word or a coherent, nameable image — DISCARD that candidate and pick another. A random-but-pretty pair is a FAILURE, not a candidate.
+
 === OUTPUT (return ONLY this JSON, no markdown, no extra text) ===
 {
   "analysis": "1–2 English sentences: the BaZi profile and your naming strategy.",
@@ -71,12 +78,13 @@ ALL prose output (analysis, rationale, translation) MUST be in ENGLISH. The only
       "surnameChar": "<surname character>",
       "givenChars": ["<given char>", "<optional 2nd given char>"],
       "meanings": { "<each given char>": "<short English meaning>" },
+      "impliedWord": "<the REAL Chinese word OR coherent image the given chars form together + English gloss, e.g. '清涟 = clear ripples'. If they form no real word/coherent image, DISCARD this candidate.>",
       "poeticMeaning": "<English, 2–3 sentences: the name's imagery and meaning>",
       "translation": "<English translation of the pool line you cited>",
       "tonePattern": "<English, e.g. 'rising + level + falling'>",
       "masterComment": "<English: why this name excels — phonetics + elements + meaning>"
     }
-    // ... EXACTLY 6 candidates total
+    // ... EXACTLY 8 candidates total
   ]
 }
 `.trim();
@@ -108,7 +116,7 @@ export function buildComposerUserMessage(profile: ComposerProfile): string {
   // 误归入 3-char,Balanced 用户永远拿不到 2 字名选择。改为显式优先匹配 Balanced。
   const len = profile.recommendedNameLength;
   const nameChars = len.includes("2 or 3")
-    ? "1 or 2 given characters (your choice; vary across the 6 candidates)"
+    ? "1 or 2 given characters (your choice; vary across the 8 candidates)"
     : len.startsWith("2 characters")
     ? "1 given character (2-char name total)"
     : len.startsWith("3 characters")
@@ -128,7 +136,7 @@ ${profile.surnameInstruction}
 Candidate characters that carry the favourable elements (prefer drawing given characters from these, and they MUST also appear in your chosen pool line):
 ${profile.candidateChars.join(" ") || "(none provided)"}
 
-TASK: Produce EXACTLY 6 candidates per the rules. Output ONLY the JSON object.
+TASK: Produce EXACTLY 8 candidates per the rules. Output ONLY the JSON object.
 `.trim();
 }
 
@@ -140,7 +148,7 @@ export async function runComposer(
 ): Promise<{ analysis: string; candidates: ComposerCandidate[] }> {
   const userMessage =
     buildComposerUserMessage(profile) +
-    (feedback ? `\n\nREVISION FEEDBACK (fix these and resubmit 6 candidates):\n${feedback}` : "");
+    (feedback ? `\n\nREVISION FEEDBACK (fix these and resubmit 8 candidates):\n${feedback}` : "");
 
   const message = await getClaude().messages.create({
     model: MODEL,

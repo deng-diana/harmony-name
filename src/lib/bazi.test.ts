@@ -5,6 +5,7 @@ import {
   getTimezoneOffsetMinutes,
   equationOfTimeMinutes,
   ZHI_HIDE_GAN,
+  RELATIONSHIPS,
 } from "./bazi";
 
 const ELEMENTS = ["Wood", "Fire", "Earth", "Metal", "Water"];
@@ -161,5 +162,45 @@ describe("地支藏干 + weighted five elements", () => {
     // integer counts unchanged (one per visible char)
     const i = r.wuxing;
     expect(i.gold + i.wood + i.water + i.fire + i.earth).toBe(8);
+  });
+});
+
+describe("喜忌不变量(调候守卫回归)", () => {
+  // 扫一批日期,覆盖各月令/各日主,验证喜忌推导的硬不变量。
+  // 这些不变量在"调候无条件翻转"的旧逻辑下会被违反,故可守护该 bug 不复发。
+  const dates: string[] = [];
+  for (let m = 1; m <= 12; m++) {
+    const mm = String(m).padStart(2, "0");
+    for (const d of ["05", "20"]) dates.push(`1993-${mm}-${d}`);
+  }
+  for (const y of ["1980", "1995", "2001", "2010"])
+    for (const md of ["02-04", "05-21", "08-08", "11-12"]) dates.push(`${y}-${md}`);
+
+  it("favourable 与 avoid 永不重叠(同一元素不可既喜又忌)", () => {
+    for (const date of dates) {
+      const r = calculateBazi(date, "12:00");
+      const fav = new Set(r.favourableElements);
+      for (const a of r.avoidElements) expect(fav.has(a)).toBe(false);
+    }
+  });
+
+  it("身强:日主元素与印星(生我)绝不进 favourable", () => {
+    for (const date of dates) {
+      const r = calculateBazi(date, "12:00");
+      if (r.strength !== "Strong") continue;
+      const rel = RELATIONSHIPS[r.dayMaster as keyof typeof RELATIONSHIPS];
+      expect(r.favourableElements).not.toContain(r.dayMaster);
+      expect(r.favourableElements).not.toContain(rel.generatedBy);
+    }
+  });
+
+  it("身弱:favourable 只含生扶(印/比),不混入克泄耗", () => {
+    for (const date of dates) {
+      const r = calculateBazi(date, "12:00");
+      if (r.strength !== "Weak") continue;
+      const rel = RELATIONSHIPS[r.dayMaster as keyof typeof RELATIONSHIPS];
+      const allowed = new Set([rel.generatedBy, r.dayMaster]);
+      for (const f of r.favourableElements) expect(allowed.has(f)).toBe(true);
+    }
   });
 });
