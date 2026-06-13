@@ -107,7 +107,7 @@ export default function LandingPage() {
 
           <div className="animate-fade-in delay-200">
             <Link href="/app">
-              <button className="px-8 py-4 bg-stone-900 text-white text-lg rounded-full font-bold hover:bg-stone-800 hover:scale-105 transition-all shadow-2xl">
+              <button className="px-8 py-4 bg-stone-900 text-white text-lg rounded-full font-bold hover:bg-stone-800 hover:scale-105 transition-soft shadow-2xl">
                 Find my name
               </button>
             </Link>
@@ -278,7 +278,7 @@ export default function LandingPage() {
           </p>
 
           <Link href="/app">
-            <button className="px-8 py-4 bg-stone-900 text-white text-lg rounded-full font-bold hover:bg-stone-800 hover:scale-105 transition-all shadow-2xl">
+            <button className="px-8 py-4 bg-stone-900 text-white text-lg rounded-full font-bold hover:bg-stone-800 hover:scale-105 transition-soft shadow-2xl">
               Find my name
             </button>
           </Link>

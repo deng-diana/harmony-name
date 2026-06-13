@@ -138,6 +138,8 @@ It's imported by the **client** page, by the **API** route, and by the **MCP** s
 
 App Router, React 19, Tailwind v4. State machine in `app/page.tsx` toggles `phase: "form" | "results"`. Hooks: `useCitySearch` (Open-Meteo geocoding for longitude/timezone), `useTTS` (Web Speech API, Chinese voice). Path alias `@/*` → `src/*`.
 
+**Design system** (added 2026-06-13): tokens live in `src/app/globals.css` `@theme` — semantic brand colors (`bg-paper`/`text-ink`/`text-ink-soft`/`border-mist`/`text-gold`, the warm ink-landscape palette) + motion (`ease-soft`/`ease-spring`, `--dur-fast/base/slow/reveal`) + `animate-fade-in/-up/reveal` + `.shimmer` + `.shadow-soft(-lifted)` + a global `prefers-reduced-motion` kill-switch. Use `cn()` (`src/lib/cn.ts`, clsx+tailwind-merge) for conditional/override-safe class merging, and the primitives in `src/components/ui/` (`Button` with variant/size/loading, `Card`). **Prefer `transition-soft`/`transition-colors` over `transition-all`** (the latter animates layout → jank; ~13 legacy usages remain in un-migrated components). Motion is intentionally restrained; the name-reveal stagger lives in `app/page.tsx`, the loading shimmer in `GenerationProgress`.
+
 ## Working conventions
 
 ### Commit messages

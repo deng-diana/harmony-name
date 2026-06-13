@@ -52,7 +52,7 @@ export function SaveNameButton({
       onClick={toggle}
       disabled={busy}
       aria-label={saved ? "Remove from saved" : "Save this name"}
-      className="transition-all hover:scale-110 disabled:opacity-50"
+      className="transition-soft hover:scale-110 disabled:opacity-50"
     >
       <Heart
         className={`w-5 h-5 ${

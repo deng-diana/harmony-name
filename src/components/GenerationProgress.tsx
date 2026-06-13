@@ -1,25 +1,26 @@
 /**
  * 生成进度指示器 — 实时显示 AI 取名的每一步
  *
- * 接收来自 SSE stream 的 step/total/message，
- * 以 stepper + 进度条的形式展示给用户
+ * 接收来自 SSE stream 的 step/total/message,以 stepper + 进度条展示。
+ * 设计:取名耗时可达数分钟,且步骤间隔长(进度百分比长时间不变),故在已完成的
+ * 进度条上叠一层【流动微光】,让"等待"显得"活着"而非卡死;活动步骤柔和呼吸。
  */
 "use client";
 
 import { Loader2, CheckCircle2, BookOpen, Search, Sparkles, PartyPopper } from "lucide-react";
+import { cn } from "@/lib/cn";
 
-/** 每一步对应的图标和颜色 */
 const STEP_CONFIG = [
-  { icon: BookOpen,     label: "Analyzing Destiny" },
-  { icon: Search,       label: "Searching Poems" },
-  { icon: Sparkles,     label: "Crafting Names" },
-  { icon: PartyPopper,  label: "Complete" },
+  { icon: BookOpen, label: "Analyzing Destiny" },
+  { icon: Search, label: "Searching Poems" },
+  { icon: Sparkles, label: "Crafting Names" },
+  { icon: PartyPopper, label: "Complete" },
 ];
 
 interface GenerationProgressProps {
-  currentStep: number;   // 1-4
-  totalSteps: number;    // 4
-  message: string;       // 当前步骤描述
+  currentStep: number; // 1-4
+  totalSteps: number; // 4
+  message: string;
 }
 
 export function GenerationProgress({
@@ -28,15 +29,19 @@ export function GenerationProgress({
   message,
 }: GenerationProgressProps) {
   const progressPercent = Math.round((currentStep / totalSteps) * 100);
+  const isDone = currentStep >= totalSteps;
 
   return (
-    <div className="py-12 px-8 bg-white rounded-2xl border border-stone-100">
-      {/* 进度条 */}
-      <div className="w-full bg-stone-100 rounded-full h-1.5 mb-8 overflow-hidden">
+    <div className="py-12 px-8 bg-paper-raised rounded-2xl border border-mist/70 shadow-soft">
+      {/* 进度条:填充用墨色,加 ease-soft 过渡;未完成时叠流动微光显"活着" */}
+      <div className="relative w-full bg-mist rounded-full h-1.5 mb-8 overflow-hidden">
         <div
-          className="bg-stone-800 h-full rounded-full transition-all duration-700 ease-out"
+          className="bg-ink h-full rounded-full transition-[width] duration-700 ease-soft"
           style={{ width: `${progressPercent}%` }}
         />
+        {!isDone && (
+          <div className="shimmer absolute inset-0 rounded-full" aria-hidden />
+        )}
       </div>
 
       {/* Stepper 步骤指示 */}
@@ -50,27 +55,23 @@ export function GenerationProgress({
           return (
             <div
               key={index}
-              className={`flex flex-col items-center gap-2 transition-all duration-500 ${
-                isCompleted
-                  ? "text-stone-800"
-                  : isCurrent
-                    ? "text-stone-900"
-                    : "text-stone-300"
-              }`}
+              className={cn(
+                "flex flex-col items-center gap-2 transition-soft",
+                isCompleted ? "text-ink" : isCurrent ? "text-ink" : "text-ink-faint/60"
+              )}
             >
               <div
-                className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-500 ${
+                className={cn(
+                  "w-10 h-10 rounded-full flex items-center justify-center transition-soft",
                   isCompleted
-                    ? "bg-stone-800 text-white"
+                    ? "bg-ink text-paper"
                     : isCurrent
-                      ? "bg-stone-100 text-stone-800 ring-2 ring-stone-800"
-                      : "bg-stone-50 text-stone-300"
-                }`}
+                      ? "bg-gold-soft/25 text-ink ring-2 ring-gold animate-pulse"
+                      : "bg-mist/50 text-ink-faint/60"
+                )}
               >
                 {isCompleted ? (
                   <CheckCircle2 className="w-5 h-5" />
-                ) : isCurrent ? (
-                  <Icon className="w-5 h-5 animate-pulse" />
                 ) : (
                   <Icon className="w-5 h-5" />
                 )}
@@ -85,15 +86,15 @@ export function GenerationProgress({
 
       {/* 当前状态文字 */}
       <div className="text-center">
-        {currentStep < totalSteps ? (
+        {!isDone ? (
           <div className="flex items-center justify-center gap-3">
-            <Loader2 className="h-5 w-5 animate-spin text-stone-400" />
-            <p className="text-stone-600 font-medium">{message}</p>
+            <Loader2 className="h-5 w-5 animate-spin text-gold" />
+            <p className="text-ink-soft font-medium">{message}</p>
           </div>
         ) : (
-          <p className="text-stone-800 font-semibold">{message}</p>
+          <p className="text-ink font-semibold">{message}</p>
         )}
-        <p className="text-xs text-stone-400 mt-2">
+        <p className="text-xs text-ink-faint mt-2">
           Step {currentStep} of {totalSteps}
         </p>
       </div>
