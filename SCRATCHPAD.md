@@ -7,6 +7,23 @@
 
 ---
 
+## 2026-06-13 — design-system foundation + motion polish 🟢 LIVE
+
+PR #5 (`379aea6`). Foundation only (no new deps, kept the warm ink-landscape look).
+**Tokens** in `globals.css @theme`: semantic brand colors (paper/ink/ink-soft/mist/gold),
+motion (ease-soft/ease-spring + `--dur-*`), `animate-reveal`/`.shimmer`/`.shadow-soft`,
+global `prefers-reduced-motion` kill-switch. **`cn()`** (`src/lib/cn.ts`, clsx+tailwind-merge
+— installed but had never been used). **Primitives** `src/components/ui/` (Button variant/
+size/loading + Card). Motion on the 3 chosen moments: name-reveal stagger, landing-scroll
+(ScrollAnimator: dropped transition-all, unobserve-after-entry, rAF passive scroll), loading
+shimmer on GenerationProgress. Replaced **all 13 `transition-all`** (layout-animating
+anti-pattern) → `transition-soft`/explicit props. **Font fix:** removed dead
+`body{font-family:Arial}` + ScrollAnimator's `font-sans` → whole site now consistently the
+layout's Lora serif (was: landing sans / app serif). tsc+eslint clean, 75/75 tests, preview
+built green before merge. See CLAUDE.md "Design system" for how to use the tokens/primitives.
+
+---
+
 ## 2026-06-12 — audit P1+P2 fixes (+ 3-reviewer pass) 🟢 LIVE
 
 Followed the P0 hardening by implementing the **P1/P2** findings from the same audit,
