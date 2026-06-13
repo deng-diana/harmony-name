@@ -45,7 +45,7 @@ export function FiveElementsChart({
                 fill="white"
                 stroke={el.color}
                 strokeWidth={isDayMaster ? 4 : 2}
-                className="transition-all duration-500"
+                className="transition duration-500"
               />
               <text
                 x={x}

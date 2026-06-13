@@ -15,7 +15,7 @@ export function StickyHeader() {
 
   return (
     <header
-      className={`fixed top-0 w-full z-50 transition-all duration-300 ${
+      className={`fixed top-0 w-full z-50 transition-[padding,background-color,border-color,backdrop-filter] duration-300 ease-soft ${
         scrolled
           ? "bg-white/90 backdrop-blur-md border-b border-stone-100 py-2"
           : "py-4"

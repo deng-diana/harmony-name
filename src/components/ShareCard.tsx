@@ -112,7 +112,7 @@ export function ShareNameButton({
       <button
         onClick={() => setOpen(true)}
         aria-label="Share this name"
-        className="hover:text-stone-800 cursor-pointer transition-all"
+        className="hover:text-stone-800 cursor-pointer transition-soft"
       >
         <Share2 className="w-5 h-5" />
       </button>

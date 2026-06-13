@@ -55,7 +55,7 @@ export function ScrollAnimator({ children }: { children: React.ReactNode }) {
     <div
       ref={rootRef}
       data-scrolled={scrolled ? "true" : "false"}
-      className="bg-paper font-sans text-ink overflow-x-hidden"
+      className="bg-paper text-ink overflow-x-hidden"
     >
       {children}
     </div>

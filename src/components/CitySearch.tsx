@@ -29,7 +29,7 @@ export function CitySearch({
           placeholder="Search city (e.g. London, New York)"
           value={cityQuery}
           onChange={(e) => onSearch(e.target.value)}
-          className="w-full pl-10 pr-4 py-3 bg-white border border-stone-200 rounded-xl text-stone-900 focus:ring-2 focus:ring-stone-900 focus:border-transparent outline-none transition-all"
+          className="w-full pl-10 pr-4 py-3 bg-white border border-stone-200 rounded-xl text-stone-900 focus:ring-2 focus:ring-stone-900 focus:border-transparent outline-none transition-soft"
         />
         <MapPin className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
         {isCityLoading && (

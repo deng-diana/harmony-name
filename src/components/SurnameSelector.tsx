@@ -56,7 +56,7 @@ export function SurnameSelector({
             setSurnameQuery("");
             setSurnameError(null);
           }}
-          className={`w-full flex items-center px-4 py-4 rounded-xl border text-left transition-all ${
+          className={`w-full flex items-center px-4 py-4 rounded-xl border text-left transition-soft ${
             surnamePreference === "any"
               ? "border-stone-900 bg-stone-50 ring-2 ring-stone-900"
               : "border-stone-200 hover:border-stone-300"
@@ -80,7 +80,7 @@ export function SurnameSelector({
 
         {/* Option: Specific surname */}
         <div
-          className={`rounded-xl border overflow-hidden transition-all ${
+          className={`rounded-xl border overflow-hidden transition-soft ${
             surnamePreference === "specified"
               ? "border-stone-900 ring-2 ring-stone-900 bg-stone-50"
               : "border-stone-200"
@@ -119,7 +119,7 @@ export function SurnameSelector({
                     setSurnameError(null);
                   }}
                   placeholder="Type Pinyin (e.g. Wang) or Chinese"
-                  className={`w-full pl-10 pr-4 py-3 bg-white border rounded-lg text-sm outline-none focus:ring-2 transition-all ${
+                  className={`w-full pl-10 pr-4 py-3 bg-white border rounded-lg text-sm outline-none focus:ring-2 transition-soft ${
                     surnameError
                       ? "border-red-500 focus:ring-red-200"
                       : "border-stone-200 focus:ring-stone-900"

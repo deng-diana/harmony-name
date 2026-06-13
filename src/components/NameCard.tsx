@@ -29,7 +29,7 @@ export function NameCard({
   const cleanHanzi = name.hanzi.replace(/[{}]/g, "");
 
   return (
-    <div className="bg-white rounded-2xl p-8 md:p-10 shadow-sm border border-stone-200 hover:shadow-xl transition-all duration-500 relative overflow-hidden group">
+    <div className="bg-white rounded-2xl p-8 md:p-10 shadow-sm border border-stone-200 hover:shadow-xl transition-soft duration-500 relative overflow-hidden group">
       <div className="absolute -right-12 -top-12 text-[12rem] font-serif text-stone-50 opacity-50 select-none pointer-events-none group-hover:text-stone-100 transition-colors">
         {cleanHanzi.charAt(0)}
       </div>
@@ -47,7 +47,7 @@ export function NameCard({
               <>
                 <button
                   onClick={() => onPlayName?.(name.hanzi, index)}
-                  className={`transition-all ${
+                  className={`transition-soft ${
                     playingNameIndex === index
                       ? "text-stone-900 animate-pulse"
                       : "hover:text-stone-800 cursor-pointer"
