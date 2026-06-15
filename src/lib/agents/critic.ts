@@ -7,11 +7,10 @@
  * 它【不碰事实】—— 不判断字在不在句里(那是代码的事)。
  */
 import { getClaude } from "../claude";
+import { NAMING_MODEL as MODEL } from "../model";
 import type { ScoredPoem } from "../retriever";
 import type { ComposerCandidate, ComposerProfile } from "./composer";
 import { pinyinOf } from "../namechars";
-
-const MODEL = "claude-sonnet-4-20250514";
 
 export interface CriticRanking {
   idx: number; // 候选在传入数组中的下标
