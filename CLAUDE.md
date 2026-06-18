@@ -60,7 +60,7 @@ Optional:
 - `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` — enables per-user rate limiting on `/api/generate`. Skipped silently if absent.
 - `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` / `NEXT_PUBLIC_STRIPE_*` — Stripe is in TEST mode; live keys are intentionally not configured.
 
-OpenAI and Claude are **both** required and serve different roles: Anthropic has no embedding model, so RAG retrieval uses OpenAI while generation uses Claude. The naming/critic model is a single env-configurable constant — `src/lib/model.ts` exports `NAMING_MODEL = process.env.NAMING_MODEL || "claude-haiku-4-5"` (cheap default; set `NAMING_MODEL=claude-sonnet-4-6` or `claude-opus-4-8` for higher quality). Composer, critic, and the legacy route all import it. The README badge saying "GPT-4o-mini" is stale — generation migrated to Claude.
+OpenAI and Claude are **both** required and serve different roles: Anthropic has no embedding model, so RAG retrieval uses OpenAI while generation uses Claude. The naming/critic model is a single env-configurable constant — `src/lib/model.ts` exports `NAMING_MODEL = process.env.NAMING_MODEL || "claude-sonnet-4-6"`. Composer, critic, and the legacy route all import it. Sonnet 4.6 is the default because the composer is a strict structured task (pool-only chars, two-given-char names, element match) that Haiku 4.5 often fails on the first round → triggers the broaden/rescue tiers → slow + occasionally all-rescue single-char names, and the 3–4× retries eat Haiku's per-token savings. Override with `NAMING_MODEL=claude-haiku-4-5` (cheapest per call, slower/less reliable here) or `claude-opus-4-8` (best, priciest). The README badge saying "GPT-4o-mini" is stale — generation migrated to Claude.
 
 ## Architecture
 
