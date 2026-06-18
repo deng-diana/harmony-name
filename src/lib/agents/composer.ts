@@ -152,7 +152,10 @@ export async function runComposer(
 
   const message = await getClaude().messages.create({
     model: MODEL,
-    max_tokens: 4096,
+    // 8 个候选(含义/出处义/点评)在中文里很占 token,Sonnet 又比 Haiku 话多;
+    // 4096 会被截断 → JSON 残缺 → 解析不出 3 个合格名 → 触发重试+拓宽(慢)。
+    // 8192 给足一轮写齐的空间(实测根因:2026-06-18 日志 max_tokens 截断告警)。
+    max_tokens: 8192,
     temperature: 0.8,
     system: [
       {
