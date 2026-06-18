@@ -147,10 +147,15 @@ describe("字库数据自洽性", () => {
     }
   });
 
-  it("已删的器物/谐音字确实不在库(灯/钗/镜/铜/沼/渔/梨/幽/圣)", () => {
-    for (const c of ["灯", "钗", "镜", "铜", "沼", "渔", "梨", "幽", "圣"]) {
+  it("已删的器物/谐音/天象字确实不在库(灯/钗/镜/铜/沼/渔/梨/幽/圣/霓/虹)", () => {
+    for (const c of ["灯", "钗", "镜", "铜", "沼", "渔", "梨", "幽", "圣", "霓", "虹"]) {
       expect(nameUniverse.has(c)).toBe(false);
     }
+  });
+
+  it("天象名词整名被禁(虹霓/朝霞 是天气词,非人名)", () => {
+    expect(isForbiddenGivenName(["虹", "霓"])).toBe(true);
+    expect(isForbiddenGivenName(["朝", "霞"])).toBe(true);
   });
 
   // composer/critic prompt 的 GOLD 正面示例必须能通过自家闸门 —— 否则模型学了金标准
