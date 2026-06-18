@@ -44,6 +44,10 @@ Database schema lives in `supabase/migrations/001_create_poems_tables.sql`, then
 - `supabase/migrations/008_rebalance_fame_weight.sql` — re-creates `search_poem_chunks` (the 005 text/chunk_id version) with the ranking weight changed from `0.7*similarity + 0.3*fame` to **`0.8*similarity + 0.2*fame`**. fame_score is poem-level, so 0.3 over-promoted mediocre lines from famous poems; 0.2 lets imagery relevance lead. Run in the SQL editor.
 - `supabase/migrations/009_stripe_idempotency.sql` — creates `stripe_processed_events(event_id pk)` so the Stripe webhook dedupes events **durably in the DB** instead of via optional Redis (Redis-less prod had NO idempotency → Stripe retries double-credited = money loss). RLS enabled, no policy (webhook writes via service_role). **Run this in the SQL editor; until then the webhook degrades gracefully — it logs and still grants credits (no idempotency) rather than 500-ing.**
 
+**Name-quality (obscure-source fix, 2026-06-18)** — run in the Supabase SQL editor:
+- `supabase/migrations/010_fame_floor_by_chars.sql` — re-creates `search_lines_by_chars` with a fame floor (`AND p.fame_score >= 2`). The by-chars arm previously returned ANY line containing a candidate char regardless of fame, flooding the pool with obscure poems (庄忌《哀时命》, 刘眘虚《阙题》) → names cited fringe sources. The floor keeps only canonical (3) + named-author (2) sources. **Primary fix.** This is the live `search_lines_by_chars` definition (supersedes 006's body).
+- `supabase/migrations/011_rebalance_fame_weight_v2.sql` — re-creates `search_poem_chunks` with ranking `0.7*similarity + 0.3*fame` (008 had moved it to 0.8/0.2; this reverts toward fame to keep canonical poems on top in the semantic arm). **This is now the live `search_poem_chunks` definition (supersedes 008).** No hard floor — preserves semantic recall; complements 010's by-chars floor.
+
 ### MCP server
 
 `mcp/server.ts` exposes the BaZi calculator as a `calculate_bazi` tool over stdio for Claude Desktop. Test it standalone with `npx -y tsx mcp/server.ts` (it imports `../src/lib/bazi`).

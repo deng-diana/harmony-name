@@ -130,7 +130,7 @@ export function isGenderClashing(c: string, gender: "male" | "female"): boolean 
 // 注意:仅影响"识别已选字的五行 + 校验",不进入候选字库(不会扩大取名先生的可选字)。
 const EXTRA_ELEMENTS: Record<string, ElementEN> = {
   // Water — 雨/冫 部 或 字义水/黑
-  雨: "Water", 霭: "Water", 霞: "Water", 霓: "Water", 汀: "Water", 玄: "Water",
+  雨: "Water", 霭: "Water", 霞: "Water", 汀: "Water", 玄: "Water",
   // Wood — 木/艹/竹 部 或 字义草木/风
   // 注:`若` 在黑名单 functionWords(虚词"假设/如同"),故不收 —— 避免与黑名单互冲。
   梧: "Wood", 梅: "Wood", 桑: "Wood", 杉: "Wood", 杏: "Wood",
