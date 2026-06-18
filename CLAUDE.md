@@ -60,7 +60,7 @@ Optional:
 - `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` — enables per-user rate limiting on `/api/generate`. Skipped silently if absent.
 - `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` / `NEXT_PUBLIC_STRIPE_*` — Stripe is in TEST mode; live keys are intentionally not configured.
 
-OpenAI and Claude are **both** required and serve different roles: Anthropic has no embedding model, so RAG retrieval uses OpenAI while generation uses Claude (`claude-sonnet-4-20250514`). The README badge saying "GPT-4o-mini" is stale — generation migrated to Claude.
+OpenAI and Claude are **both** required and serve different roles: Anthropic has no embedding model, so RAG retrieval uses OpenAI while generation uses Claude. The naming/critic model is a single env-configurable constant — `src/lib/model.ts` exports `NAMING_MODEL = process.env.NAMING_MODEL || "claude-haiku-4-5"` (cheap default; set `NAMING_MODEL=claude-sonnet-4-6` or `claude-opus-4-8` for higher quality). Composer, critic, and the legacy route all import it. The README badge saying "GPT-4o-mini" is stale — generation migrated to Claude.
 
 ## Architecture
 

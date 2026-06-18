@@ -8,6 +8,7 @@
  * 过量生成 8 个候选,留给硬校验 + 评审先生筛选。
  */
 import { getClaude } from "../claude";
+import { NAMING_MODEL as MODEL } from "../model";
 import type { ScoredPoem } from "../retriever";
 import type { NameCandidate } from "../verify";
 
@@ -31,8 +32,6 @@ export interface ComposerCandidate extends NameCandidate {
   masterComment?: string; // 英文:点评为何出色
   rescueNote?: string; // 内部:确定性救援的诚实标注(系统兜底姓/放宽性别),critic 覆盖 masterComment 时须保留追加
 }
-
-const MODEL = "claude-sonnet-4-20250514";
 
 // 静态系统提示(可缓存的前缀)—— 取名先生的全部专业知识。
 export function createComposerSystemPrompt(): string {

@@ -12,6 +12,7 @@
  *           真正的进度/结果再走 SSE 流。
  */
 import { getClaude } from "@/lib/claude";
+import { NAMING_MODEL } from "@/lib/model";
 import { searchPoems } from "@/lib/retriever";
 import { generateRequestSchema } from "@/lib/schemas";
 import { createClient } from "@/lib/supabase/server";
@@ -223,7 +224,7 @@ export async function POST(request: Request) {
         });
 
         const message = await getClaude().messages.create({
-          model: "claude-sonnet-4-20250514",
+          model: NAMING_MODEL,
           max_tokens: 4096,
           temperature: 0.7,
           // 静态指令缓存(省 ~90% 输入 token);诗词块每次不同,不缓存
