@@ -320,23 +320,26 @@ export default function Home() {
               ))}
             </div>
 
-            <div className="text-center pt-12 pb-8">
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  abortRef.current?.abort(); // 中止仍在跑的流,避免它稍后把名字写回已重置的表单
-                  abortRef.current = null; // 置 null:让旧流的 finally 守卫失效,不再 refresh
-                  setIsNamesLoading(false);
-                  setPhase("form");
-                  setAiData(null);
-                  window.scrollTo(0, 0);
-                }}
-                className="rounded-full text-ink-soft"
-              >
-                <RefreshCw className="w-4 h-4" /> Start over with different
-                details
-              </Button>
-            </div>
+            {/* 仅在【非加载中】显示;加载时隐藏,免得和进度卡挤在一起显乱 */}
+            {!isNamesLoading && (
+              <div className="text-center pt-12 pb-8">
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    abortRef.current?.abort(); // 中止仍在跑的流,避免它稍后把名字写回已重置的表单
+                    abortRef.current = null; // 置 null:让旧流的 finally 守卫失效,不再 refresh
+                    setIsNamesLoading(false);
+                    setPhase("form");
+                    setAiData(null);
+                    window.scrollTo(0, 0);
+                  }}
+                  className="rounded-full text-ink-soft"
+                >
+                  <RefreshCw className="w-4 h-4" /> Start over with different
+                  details
+                </Button>
+              </div>
+            )}
           </div>
         </main>
       </div>
