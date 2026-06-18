@@ -29,18 +29,19 @@ export function NameCard({
   const cleanHanzi = name.hanzi.replace(/[{}]/g, "");
 
   return (
-    <div className="bg-white rounded-2xl p-8 md:p-10 shadow-sm border border-stone-200 hover:shadow-xl transition-soft duration-500 relative overflow-hidden group">
-      <div className="absolute -right-12 -top-12 text-[12rem] font-serif text-stone-50 opacity-50 select-none pointer-events-none group-hover:text-stone-100 transition-colors">
+    <div className="bg-paper-raised rounded-2xl p-7 sm:p-9 shadow-soft border border-mist/70 hover:shadow-soft-lifted hover:-translate-y-0.5 transition-soft relative overflow-hidden group">
+      {/* 水印汉字 —— 极淡墨色,hover 时微微加深(参考:墨落宣纸的克制层次) */}
+      <div className="absolute -right-10 -top-10 text-[11rem] leading-none font-serif text-ink/[0.04] group-hover:text-ink/[0.06] select-none pointer-events-none transition-colors">
         {cleanHanzi.charAt(0)}
       </div>
 
       <div className="relative z-10">
-        <div className="mb-8 text-left">
-          <h3 className="text-6xl md:text-7xl font-serif text-stone-900 tracking-tight mb-3 leading-none">
+        <div className="mb-7 text-left">
+          <h3 className="text-5xl sm:text-6xl font-serif text-ink tracking-tight mb-3 leading-none">
             {cleanHanzi}
           </h3>
-          <div className="flex items-center gap-3 text-stone-500">
-            <span className="text-xl font-medium tracking-wide font-serif">
+          <div className="flex items-center gap-3 text-ink-soft">
+            <span className="text-lg font-medium tracking-wide font-serif">
               {name.pinyin}
             </span>
             {!readOnly && (
@@ -49,8 +50,8 @@ export function NameCard({
                   onClick={() => onPlayName?.(name.hanzi, index)}
                   className={`transition-soft ${
                     playingNameIndex === index
-                      ? "text-stone-900 animate-pulse"
-                      : "hover:text-stone-800 cursor-pointer"
+                      ? "text-gold animate-pulse"
+                      : "hover:text-ink cursor-pointer"
                   }`}
                   aria-label="Play name pronunciation"
                 >
@@ -61,20 +62,21 @@ export function NameCard({
               </>
             )}
           </div>
-          <div className="mt-6">
-            <p className="text-lg md:text-xl text-stone-800 font-serif italic leading-relaxed">
+          <div className="mt-5">
+            <p className="text-lg text-ink font-serif italic leading-relaxed">
               &ldquo;{name.poeticMeaning}&rdquo;
             </p>
           </div>
         </div>
 
-        <div className="grid md:grid-cols-2 gap-10 pt-8 border-t border-stone-100">
+        {/* 内部竖向堆叠(右列已变窄,并排会挤);出处在上、字形拆解在下 */}
+        <div className="grid gap-7 pt-7 border-t border-mist/60">
           <div>
-            <h4 className="text-xs font-bold text-stone-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+            <h4 className="text-[11px] font-bold text-ink-faint uppercase tracking-wider mb-3">
               Cultural Heritage
             </h4>
-            <div className="bg-[#FFFCF5] p-5 rounded-xl border border-stone-100">
-              <p className="text-stone-800 font-serif text-lg mb-2 leading-relaxed">
+            <div className="bg-gold-soft/10 p-5 rounded-xl border border-mist/50">
+              <p className="text-ink font-serif text-lg mb-2 leading-relaxed">
                 {renderPoem(
                   name.culturalHeritage?.original || "",
                   name.hanzi
@@ -83,30 +85,30 @@ export function NameCard({
               {/* translation 可能为空(deterministic rescue 路径没走 LLM 翻译),
                   此时不要渲染一对空引号,以免出现尴尬的 "" */}
               {name.culturalHeritage?.translation?.trim() && (
-                <p className="text-sm text-stone-500 italic mb-3 border-l-2 border-stone-300 pl-3">
+                <p className="text-sm text-ink-soft italic mb-3 border-l-2 border-gold-soft pl-3">
                   &ldquo;{name.culturalHeritage.translation}&rdquo;
                 </p>
               )}
-              <div className="text-[10px] text-stone-400 font-bold uppercase tracking-wide">
+              <div className="text-[10px] text-ink-faint font-bold uppercase tracking-wide">
                 Source: {name.culturalHeritage?.source}
               </div>
             </div>
           </div>
 
           <div>
-            <h4 className="text-xs font-bold text-stone-400 uppercase tracking-wider mb-3">
+            <h4 className="text-[11px] font-bold text-ink-faint uppercase tracking-wider mb-3">
               The Anatomy
             </h4>
-            <div className="space-y-4">
+            <div className="space-y-3">
               {name.anatomy?.map((char, idx) => (
                 <div key={idx} className="flex items-center gap-4">
-                  <div className="w-9 h-9 bg-stone-900 text-white rounded-lg flex items-center justify-center font-serif text-lg flex-shrink-0">
+                  <div className="w-9 h-9 bg-ink text-paper rounded-lg flex items-center justify-center font-serif text-lg flex-shrink-0">
                     {char.char}
                   </div>
-                  <div className="flex-1 flex items-center text-sm text-stone-800">
-                    <span className="text-stone-700">{char.meaning}</span>
+                  <div className="flex-1 flex items-center text-sm text-ink-soft">
+                    <span>{char.meaning}</span>
                   </div>
-                  <div className="text-[10px] font-bold px-2.5 py-1 bg-stone-100 text-stone-500 rounded-full border border-stone-200 flex-shrink-0">
+                  <div className="text-[10px] font-bold px-2.5 py-1 bg-mist/60 text-ink-soft rounded-full border border-mist flex-shrink-0">
                     {char.element}
                   </div>
                 </div>
