@@ -256,27 +256,29 @@ export default function Home() {
     } ${metaSurname}`;
 
     return (
-      <div className="min-h-screen bg-[#FDFBF7] flex flex-col items-center py-12 px-4 font-sans text-stone-900">
-        <header className="w-full max-w-4xl mb-12 text-center">
-          <h1 className="text-4xl md:text-5xl font-bold font-serif tracking-tight text-stone-900 mb-3">
-            You are the {baziResult.dayMaster} Archetype
-          </h1>
-          <div className="text-xs md:text-sm text-stone-500 font-mono uppercase tracking-wide mb-1">
-            {metaString}
+      <div className="min-h-screen bg-paper py-12 px-4 sm:px-6 font-sans text-ink">
+        <main className="mx-auto max-w-6xl lg:grid lg:grid-cols-2 lg:gap-16 lg:items-start">
+          {/* LEFT — your destiny archetype; sticky beside the scrolling names on desktop */}
+          <div className="space-y-8 lg:sticky lg:top-10 lg:self-start animate-fade-in-up">
+            <header className="text-center">
+              <h1 className="text-3xl md:text-4xl font-bold font-serif tracking-tight text-ink mb-3">
+                You are the {baziResult.dayMaster} Archetype
+              </h1>
+              <div className="text-[11px] md:text-xs text-ink-faint font-mono uppercase tracking-wide mb-1">
+                {metaString}
+              </div>
+              <p className="text-xs text-ink-faint/80 italic">
+                Decoded from ancient wisdom, powered by AI. For cultural &amp;
+                entertainment purposes.
+              </p>
+            </header>
+            <DestinyCard baziResult={baziResult} />
           </div>
-          <p className="text-xs text-stone-400 italic">
-            Decoded from ancient wisdom, powered by AI. For cultural &amp;
-            entertainment purposes.
-          </p>
-        </header>
 
-        <main className="w-full max-w-4xl space-y-16">
-          <DestinyCard baziResult={baziResult} />
-
-          {/* NAME SUGGESTIONS */}
-          <section>
+          {/* RIGHT — the Master's name selection; scrolls beside the sticky left */}
+          <div className="mt-16 lg:mt-0 lg:border-l lg:border-mist lg:pl-16">
             <div className="text-center mb-10">
-              <h2 className="text-3xl font-serif font-bold text-stone-900">
+              <h2 className="text-2xl md:text-3xl font-serif font-bold text-ink">
                 Master&apos;s Selection
               </h2>
             </div>
@@ -297,11 +299,11 @@ export default function Home() {
 
             <div className="grid gap-8">
               {aiData?.names?.map((name, index) => (
-                // 揭晓时刻:三个名字逐个"显形"(淡入+上浮+极轻放大),每张错峰 120ms。
+                // 揭晓时刻:三个名字逐个"显形"(淡入+上浮+极轻放大),每张错峰 90ms。
                 <div
                   key={index}
                   className="animate-reveal"
-                  style={{ animationDelay: `${index * 120}ms` }}
+                  style={{ animationDelay: `${index * 90}ms` }}
                 >
                   <NameCard
                     name={name}
@@ -317,24 +319,24 @@ export default function Home() {
                 </div>
               ))}
             </div>
-          </section>
 
-          <div className="text-center pt-12 pb-24">
-            <Button
-              variant="secondary"
-              onClick={() => {
-                abortRef.current?.abort(); // 中止仍在跑的流,避免它稍后把名字写回已重置的表单
-                abortRef.current = null; // 置 null:让旧流的 finally 守卫失效,不再 refresh
-                setIsNamesLoading(false);
-                setPhase("form");
-                setAiData(null);
-                window.scrollTo(0, 0);
-              }}
-              className="rounded-full text-ink-soft"
-            >
-              <RefreshCw className="w-4 h-4" /> Start over with different
-              details
-            </Button>
+            <div className="text-center pt-12 pb-8">
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  abortRef.current?.abort(); // 中止仍在跑的流,避免它稍后把名字写回已重置的表单
+                  abortRef.current = null; // 置 null:让旧流的 finally 守卫失效,不再 refresh
+                  setIsNamesLoading(false);
+                  setPhase("form");
+                  setAiData(null);
+                  window.scrollTo(0, 0);
+                }}
+                className="rounded-full text-ink-soft"
+              >
+                <RefreshCw className="w-4 h-4" /> Start over with different
+                details
+              </Button>
+            </div>
           </div>
         </main>
       </div>

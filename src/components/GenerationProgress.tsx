@@ -33,8 +33,8 @@ export function GenerationProgress({
 
   return (
     <div className="py-12 px-8 bg-paper-raised rounded-2xl border border-mist/70 shadow-soft">
-      {/* 进度条:填充用墨色,加 ease-soft 过渡;未完成时叠流动微光显"活着" */}
-      <div className="relative w-full bg-mist rounded-full h-1.5 mb-8 overflow-hidden">
+      {/* 极细进度条(参考:克制);填充墨色 + ease-soft;未完成时叠微光显"活着" */}
+      <div className="relative w-full bg-mist rounded-full h-1 mb-10 overflow-hidden">
         <div
           className="bg-ink h-full rounded-full transition-[width] duration-700 ease-soft"
           style={{ width: `${progressPercent}%` }}
@@ -44,8 +44,8 @@ export function GenerationProgress({
         )}
       </div>
 
-      {/* Stepper 步骤指示 */}
-      <div className="flex justify-between mb-8">
+      {/* Stepper:完成=填充墨+对勾,进行中=描边墨,待办=淡(纯靠透明度区分,不喧哗) */}
+      <div className="flex justify-between mb-10">
         {STEP_CONFIG.map((step, index) => {
           const stepNum = index + 1;
           const isCompleted = currentStep > stepNum;
@@ -56,27 +56,27 @@ export function GenerationProgress({
             <div
               key={index}
               className={cn(
-                "flex flex-col items-center gap-2 transition-soft",
-                isCompleted ? "text-ink" : isCurrent ? "text-ink" : "text-ink-faint/60"
+                "flex flex-col items-center gap-2 transition-soft duration-500",
+                isCompleted ? "opacity-50" : isCurrent ? "opacity-100" : "opacity-25"
               )}
             >
               <div
                 className={cn(
-                  "w-10 h-10 rounded-full flex items-center justify-center transition-soft",
+                  "w-9 h-9 rounded-full flex items-center justify-center transition-soft duration-500",
                   isCompleted
                     ? "bg-ink text-paper"
                     : isCurrent
-                      ? "bg-gold-soft/25 text-ink ring-2 ring-gold animate-pulse"
-                      : "bg-mist/50 text-ink-faint/60"
+                      ? "border-2 border-ink text-ink"
+                      : "border border-mist text-ink-faint"
                 )}
               >
                 {isCompleted ? (
                   <CheckCircle2 className="w-5 h-5" />
                 ) : (
-                  <Icon className="w-5 h-5" />
+                  <Icon className={cn("w-4 h-4", isCurrent && "animate-pulse")} />
                 )}
               </div>
-              <span className="text-[10px] font-medium tracking-wide uppercase hidden sm:block">
+              <span className="text-[10px] font-medium tracking-wider uppercase hidden sm:block text-ink">
                 {step.label}
               </span>
             </div>
@@ -84,17 +84,20 @@ export function GenerationProgress({
         })}
       </div>
 
-      {/* 当前状态文字 */}
+      {/* 当前状态文字 —— 安静:小号转圈 + 省略号脉冲,不抢戏 */}
       <div className="text-center">
         {!isDone ? (
-          <div className="flex items-center justify-center gap-3">
-            <Loader2 className="h-5 w-5 animate-spin text-gold" />
-            <p className="text-ink-soft font-medium">{message}</p>
+          <div className="flex items-center justify-center gap-2.5">
+            <Loader2 className="h-4 w-4 animate-spin text-ink-faint" />
+            <p className="text-ink-soft">
+              {message}
+              <span className="ml-0.5 inline-block animate-pulse">…</span>
+            </p>
           </div>
         ) : (
           <p className="text-ink font-semibold">{message}</p>
         )}
-        <p className="text-xs text-ink-faint mt-2">
+        <p className="text-xs text-ink-faint mt-2 font-mono tracking-wide">
           Step {currentStep} of {totalSteps}
         </p>
       </div>
