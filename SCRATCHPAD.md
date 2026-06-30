@@ -7,6 +7,51 @@
 
 ---
 
+## 2026-06-30 — naming pipeline: fix slow / 2-char / same-surname + DeepSeek eval 🟢 LIVE
+
+A real foreign-user test exposed 3 symptoms: generation hung ~3 min, names were 2-char
+(姓+1), all the same surname. Five expert/senior agent reviews + a live DB/pipeline probe
+converged: all three were ONE failure mode — the v2 pipeline's "always-3 names" guarantee
+forcing a serial LLM rescue ladder — plus a precise empirical root cause underneath it.
+
+**Shipped to prod (main):**
+- **Supabase auto-heartbeat** (PR #12, `b763f5a`): Vercel cron `GET /api/heartbeat` daily-pings
+  `poems` so the free project never hits the 7-day idle pause (it HAD paused; restored from the
+  dashboard). Gated by optional `CRON_SECRET`.
+- **floor-1 rescue** (PR #13): accept 1–2 verified names as a normal result (rescue threshold
+  `<3`→`<1`); delete the broaden + single-char LLM rescue tiers; deterministic rescue only at
+  `verified===0`, returns 1 honest name (no padding to 3); skip Critic when ≤3; vary surname per
+  candidate (auto mode); + per-run `[naming-pipeline]` observability log. Kills the 3-min hang.
+- **charSpan grounding fix** (PR #14, `2e9e693`): the empirical root cause. The Composer picks
+  good adjacent pairs (松月) but set `charSpan` to the whole clause (松月生夜凉) → verify rejected
+  **16/16** live candidates → single-char rescue. Now `deriveGroundedSpan()` derives the minimal
+  span from the real line + givenChars (shortest window whose interior is only function words);
+  a fabricated/non-adjacent char yields no valid window → still rejected (grounding strengthened).
+  **Caution logged:** PR #13's squash-merge silently dropped this commit — caught by checking
+  `main` after merge, recovered from reflog, re-merged as PR #14. Never trust a merge's report.
+- **Turbopack root pin** (next.config.ts): stops Next 16 scanning `~/Desktop` (macOS permission
+  wall that crashed `npm run dev`).
+
+**Live end-to-end proof** — the Earth chart that produced 林洲/林云/林渚 now returns
+**江松月 / 穆清泉 / 祁皓月**: 3 grounded 3-char names, 3 distinct surnames, 1 composer call, no
+rescue (~69s, down from the 3-min hang). The pool was empirically HEALTHY (31–33 valid names
+available) — so the "precompute a corpus fragment index" idea was a non-problem; not pursued.
+
+**DeepSeek provider switch** (PR #15, optional infra): `src/lib/llm.ts` adapter + `NAMING_PROVIDER`
+flag (default Anthropic, one-click revert; Anthropic path unchanged — cached-static + uncached-pool
+split preserved). **Finding: DeepSeek not usable yet** — `deepseek-v4-flash` AND `-pro` both return
+EMPTY responses (`RAW LENGTH 0`; auth works → NOT an API-key issue) → 0 candidates → rescue, and
+slower (138/159s). Needs a focused DeepSeek-API debug (likely reasoning-model / `json_object` /
+max_tokens behavior). Keep Anthropic default.
+
+Tests 95/95, tsc clean throughout. `NAMING_PIPELINE_V2` confirmed `=true` in prod (the CLAUDE.md
+"unset" note was stale — corrected); also added it to the Preview env so previews exercise v2.
+**Deferred:** measured 8→6 candidate / max_tokens trim for more speed (stale WIP stash dropped —
+redo fresh + measured); DeepSeek empty-response debug; **distribution / GTM** (the real bottleneck —
+no organic traffic yet; see memory).
+
+---
+
 ## 2026-06-13 — design-system foundation + motion polish 🟢 LIVE
 
 PR #5 (`379aea6`). Foundation only (no new deps, kept the warm ink-landscape look).
