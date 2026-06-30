@@ -7,8 +7,7 @@
  *   - 出处由代码事后按 lineId 从 DB 回填 → 造假在结构上不可能(见 verify.ts / 编排层)。
  * 过量生成 8 个候选,留给硬校验 + 评审先生筛选。
  */
-import { getClaude } from "../claude";
-import { NAMING_MODEL as MODEL } from "../model";
+import { namingComplete } from "../llm";
 import type { ScoredPoem } from "../retriever";
 import type { NameCandidate } from "../verify";
 
@@ -150,32 +149,19 @@ export async function runComposer(
     buildComposerUserMessage(profile) +
     (feedback ? `\n\nREVISION FEEDBACK (fix these and resubmit 8 candidates):\n${feedback}` : "");
 
-  const message = await getClaude().messages.create({
-    model: MODEL,
-    // 8 个候选(含义/出处义/点评)在中文里很占 token,Sonnet 又比 Haiku 话多;
-    // 4096 会被截断 → JSON 残缺 → 解析不出 3 个合格名 → 触发重试+拓宽(慢)。
-    // 8192 给足一轮写齐的空间(实测根因:2026-06-18 日志 max_tokens 截断告警)。
-    max_tokens: 8192,
+  // System = static instructions (cached) + per-request pool block (uncached). The
+  // adapter keeps them as separate blocks for Anthropic (so the static prefix gets
+  // cache hits) and concatenates them for DeepSeek.
+  // 8 个候选(含义/出处义/点评)在中文里很占 token,Sonnet 又比 Haiku 话多;
+  // 4096 会被截断 → JSON 残缺 → 解析不出 3 个合格名 → 触发重试+拓宽(慢)。
+  // 8192 给足一轮写齐的空间(实测根因:2026-06-18 日志 max_tokens 截断告警)。
+  const content = await namingComplete({
+    system: createComposerSystemPrompt(), // static → Anthropic caches this prefix
+    systemDynamic: buildPoolBlock(pool), // per-request pool → uncached separate block
+    user: userMessage,
+    maxTokens: 8192,
     temperature: 0.8,
-    system: [
-      {
-        type: "text",
-        text: createComposerSystemPrompt(),
-        cache_control: { type: "ephemeral" },
-      },
-      { type: "text", text: buildPoolBlock(pool) },
-    ],
-    messages: [{ role: "user", content: userMessage }],
   });
-
-  // max_tokens 截断 → JSON 必残缺 → 解析得 0 候选,会被误当"全不合格"白烧一整轮兜底。
-  // 显式记录此可区分的失败模式(配合 finding#2 的瘦候选方案,根因也会缓解)。
-  if (message.stop_reason === "max_tokens") {
-    console.warn("Composer output truncated (max_tokens) — candidate JSON likely incomplete");
-  }
-
-  const textBlock = message.content.find((b) => b.type === "text");
-  const content = textBlock && "text" in textBlock ? textBlock.text : "";
 
   const parsed = parseJsonLoose(content);
   const candidates: ComposerCandidate[] = Array.isArray(parsed?.candidates)
