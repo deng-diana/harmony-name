@@ -24,6 +24,84 @@ import {
   pinyinOf,
 } from "./namechars";
 
+/**
+ * Derive the shortest contiguous window of `chunkText` that covers all
+ * `givenChars` (with multiplicity), tolerating function words between them
+ * but rejecting any non-given, non-function-word content character.
+ *
+ * Returns null if:
+ *   - a given char is absent from the text, or
+ *   - the given chars can only co-occur across a content-char gap (no valid window).
+ *
+ * Algorithm: for each start position i where chunkText[i] is a given char,
+ * walk forward; accept given chars and function words; abort on any content char.
+ * Record the window when all given chars are covered. Return the shortest window.
+ * Handles multiple occurrences of the same char — always picks the tightest valid window.
+ */
+export function deriveGroundedSpan(
+  chunkText: string,
+  givenChars: string[]
+): string | null {
+  if (givenChars.length === 0) return null;
+
+  // Build a multiset of required chars (handle duplicates via count map).
+  const required = new Map<string, number>();
+  for (const ch of givenChars) {
+    required.set(ch, (required.get(ch) ?? 0) + 1);
+  }
+  const givenSet = new Set(givenChars);
+
+  let shortest: string | null = null;
+
+  for (let i = 0; i < chunkText.length; i++) {
+    // Only start a window from a given char.
+    if (!givenSet.has(chunkText[i])) continue;
+
+    // Copy the remaining-needed counts for this attempt.
+    const remaining = new Map(required);
+    let j = i;
+
+    // Consume the starting char.
+    const cnt0 = remaining.get(chunkText[i])!;
+    if (cnt0 <= 1) remaining.delete(chunkText[i]);
+    else remaining.set(chunkText[i], cnt0 - 1);
+
+    // Walk forward until all given chars are covered or a content char stops us.
+    let valid = true;
+    while (remaining.size > 0) {
+      if (j + 1 >= chunkText.length) {
+        valid = false; // ran off the end without covering all required chars
+        break;
+      }
+      j++;
+      const ch = chunkText[j];
+      if (givenSet.has(ch)) {
+        // Given char: consume from remaining if still needed; otherwise just pass through.
+        const cnt = remaining.get(ch);
+        if (cnt !== undefined) {
+          if (cnt <= 1) remaining.delete(ch);
+          else remaining.set(ch, cnt - 1);
+        }
+      } else if (isFunctionWord(ch)) {
+        // Function word (之/乎/兮/…): transparent gap — include in window, continue.
+      } else {
+        // Content char that is neither given nor a function word: this start fails.
+        valid = false;
+        break;
+      }
+    }
+
+    if (valid && remaining.size === 0) {
+      const win = chunkText.slice(i, j + 1);
+      if (shortest === null || win.length < shortest.length) {
+        shortest = win;
+      }
+    }
+  }
+
+  return shortest;
+}
+
 /** 取名先生输出的一个候选(只引用编号 + 字,不含诗句原文)。 */
 export interface NameCandidate {
   lineId: number; // 引用候选池里某条真句的 chunkId
@@ -61,10 +139,6 @@ export interface VerifyResult {
   reasons: string[]; // 不通过原因(结构化文字,喂给评审先生做重生成反馈)
 }
 
-// charSpan 应是名字字所在的"紧凑片段"(取名于一句之内连用数字),
-// 不能拿整句长诗来"接地"。给名字字数 + 少量余量。
-const MAX_SPAN_LEN = 8;
-
 export function verifyCandidate(
   c: NameCandidate,
   ctx: VerifyContext
@@ -76,28 +150,27 @@ export function verifyCandidate(
   if (!line) {
     reasons.push(`lineId ${c.lineId} 不在候选池(疑似编造的出处)`);
   } else {
-    if (!c.charSpan || !line.chunkText.includes(c.charSpan)) {
-      reasons.push(`charSpan「${c.charSpan}」不是所引诗句的连续片段`);
-    } else if (c.charSpan.length > MAX_SPAN_LEN) {
-      reasons.push(`charSpan「${c.charSpan}」过长(应是名字字所在的紧凑片段,非整句)`);
+    // ①a Per-char presence: each given char must actually appear in the cited line.
+    const missingChars = c.givenChars.filter((ch) => !line.chunkText.includes(ch));
+    for (const ch of missingChars) {
+      reasons.push(`「${ch}」未出现在所引诗句中`);
     }
-    for (const ch of c.givenChars) {
-      if (!line.chunkText.includes(ch)) {
-        reasons.push(`「${ch}」未出现在所引诗句中`);
-      } else if (c.charSpan && !c.charSpan.includes(ch)) {
-        reasons.push(`「${ch}」不在所标 charSpan 内`);
+
+    // ①b Derive the minimal grounded span — stop trusting the LLM's charSpan.
+    // deriveGroundedSpan finds the shortest window covering all givenChars where
+    // every character inside is either a given char or a function word (之/乎/兮/…).
+    // A fabricated char yields no valid window → still rejected.
+    // An over-wide LLM charSpan (e.g. "松月生夜凉" for given ["松","月"]) is now
+    // corrected by the code: the minimal grounded span "松月" is accepted.
+    if (missingChars.length === 0) {
+      const groundedSpan = deriveGroundedSpan(line.chunkText, c.givenChars);
+      if (groundedSpan === null) {
+        reasons.push(
+          `givenChars 在所引诗句中无紧邻通路(中夹了实字,不成词)`
+        );
       }
-    }
-    // charSpan 内被"跳过"的字(非名字字)只能是【虚词】(之乎者也兮…),否则
-    // 等于从"窈窕淑女"抠出"窈女"、把实字"窕淑"丢掉 —— 不允许跳过实字。
-    // 注意:此处只放行 functionWords,绝不放行 inauspicious/overweening/crude ——
-    // 否则 LLM 可从 "愁绪满怀" 抠出 "绪",把 "愁" 当作"可跳过"塞进引用框。
-    if (c.charSpan && line.chunkText.includes(c.charSpan)) {
-      for (const ch of c.charSpan) {
-        if (!c.givenChars.includes(ch) && !isFunctionWord(ch)) {
-          reasons.push(`charSpan 中夹了实字「${ch}」(只能跳过虚词)`);
-        }
-      }
+      // If non-null: a valid tight window exists — the span check passes.
+      // The canonical charSpan will be normalised in the pipeline's passing() helper.
     }
   }
 
