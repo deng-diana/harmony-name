@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { rescueDeterministic } from "./rescue";
-import type { VerifyContext } from "../verify";
+import { verifyCandidate, type VerifyContext } from "../verify";
 import type { ScoredPoem } from "../retriever";
 import { elementOfChar, isGenderForbidden, genderLeanOf } from "../namechars";
 
@@ -78,5 +78,49 @@ describe("rescueDeterministic — always-3 invariant on hard female charts", () 
       gender: "female",
     };
     expect(rescueDeterministic("林", easyCtx, 3).length).toBe(3);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Floor-1 contract tests (needed = 1): the new minimum after the pipeline
+// change that stops padding to 3.  These tests verify three properties the
+// spec requires:
+//   1. Returns ≥1 candidate and never 0 when there is at least one usable char.
+//   2. Uses the SUPPLIED surname, never the 李 fallback.
+//   3. Every returned candidate passes verifyCandidate (grounded).
+// ---------------------------------------------------------------------------
+
+const floorCtx: VerifyContext = {
+  // 清 = Water (favourable), 昊 = Fire (favourable), both male-safe name-suitable chars.
+  // Pool contains a real line so grounding check passes.
+  pool: [poem(20, "清昊")],
+  favourableElements: ["Water", "Fire"],
+  avoidElements: ["Earth"],
+  gender: "male",
+};
+
+describe("rescueDeterministic — floor-1 contract (needed = 1)", () => {
+  it("returns ≥1 candidate and never 0 when the pool has usable chars", () => {
+    const out = rescueDeterministic("邓", floorCtx, 1);
+    expect(out.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("uses the SUPPLIED surname, not the 李 fallback", () => {
+    const out = rescueDeterministic("邓", floorCtx, 1);
+    expect(out.length).toBeGreaterThanOrEqual(1);
+    for (const c of out) {
+      expect(c.surnameChar).toBe("邓");
+    }
+  });
+
+  it("every returned candidate passes verifyCandidate (grounded)", () => {
+    // Use requireTwoGivenChars: false because rescue produces single-char given names.
+    const rescueCtx: VerifyContext = { ...floorCtx, requireTwoGivenChars: false };
+    const out = rescueDeterministic("邓", rescueCtx, 1);
+    expect(out.length).toBeGreaterThanOrEqual(1);
+    for (const c of out) {
+      const result = verifyCandidate(c, rescueCtx);
+      expect(result.ok).toBe(true);
+    }
   });
 });
