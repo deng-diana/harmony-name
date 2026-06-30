@@ -196,5 +196,5 @@ export function buildSurnameInstruction(
   ) {
     return `MANDATORY SURNAME: "${specifiedSurname}" (must use this surname).`;
   }
-  return `RECOMMEND a surname that harmonizes with the ${dayMaster} Day Master.`;
+  return `RECOMMEND a DIFFERENT, varied surname for each candidate — each harmonizing with the ${dayMaster} Day Master. Do NOT reuse the same surname across candidates.`;
 }

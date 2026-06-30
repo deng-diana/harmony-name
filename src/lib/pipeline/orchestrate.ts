@@ -3,9 +3,10 @@
  * =====================================================
  *   ① 喜用神 → 候选字(字库) + 意象词 → 真实候选池(retriever)
  *   ② 取名先生 Composer 组 6 个候选(只回引用编号 + 字)
- *   ③ 硬校验闸门 verify 过滤;不足 3 个则带反馈重生成一轮(轻量 evaluator-optimizer)
+ *   ③ 硬校验闸门 verify 过滤;零通过则带反馈重生成一轮(轻量 evaluator-optimizer)
+ *      仍零通过 → 确定性兜底 rescue (1 name floor, no LLM)
  *   ④ 出处由代码【按 lineId 从候选池/DB 回填】+ 五行/拼音由代码补 → 造假不可能
- * 评审先生 Critic(Step 6)将插在 ③ 之后做审美打分;此处先用"校验+重生成"兜底。
+ * 评审先生 Critic 仅在 >3 候选时启动做审美打分排序(≤3 候选直接输出,无需裁剪)。
  */
 import { buildVerifiedPool, type ScoredPoem } from "../retriever";
 import {
@@ -53,7 +54,7 @@ const TOTAL = 5;
 
 // Composer 安全包装:一次 Claude API 异常(529 过载/超时/SDK 重试耗尽)不应炸掉整条
 // 管线 —— 否则已通过校验的 1~2 个合法名 + ③.6 纯代码兜底全被连坐。失败时降级为
-// "这一轮 0 候选",自然落入下一兜底层,最终走到确定性救援保 always-3。
+// "这一轮 0 候选",自然落入下一兜底层,最终走到确定性救援保 floor-1。
 async function safeComposer(
   profile: ComposerProfile,
   pool: ScoredPoem[],
@@ -76,10 +77,11 @@ export async function runNamingPipeline(
 ): Promise<PipelineResult> {
   const onProgress = opts.onProgress ?? (() => {});
 
-  // 时间预算守卫:route 的 maxDuration=300s,瘦命格最坏路径会串行 4 次 Composer
-  // (实测尾延迟 460s)→ 被平台 300s 强杀 = SSE 断流 + 扣分不退。设软截止线,超过后
-  // 跳过后续【慢 LLM 兜底层】,直接走 ③.6 纯代码救援(瞬时、保 always-3)。
-  const deadlineMs = Date.now() + 210_000; // 留 ~90s 给 hydrate/归档/网络余量
+  // Observability counters — emitted as a single JSON line at the end of each run.
+  let round1Verified = 0;
+  let composerCalls = 1; // starts at 1 for the initial composer call
+  let deterministicRescueFired = false;
+  let usedFallbackSurname = false;
 
   // ① 候选字 + 候选池
   onProgress(1, TOTAL, "Searching real classical lines…");
@@ -87,7 +89,7 @@ export async function runNamingPipeline(
   const imageryQuery =
     "中国古典诗词 " +
     input.favourableElements.map((e) => ELEMENT_IMAGERY[e] || e).join(" ");
-  let pool = await buildVerifiedPool({
+  const pool = await buildVerifiedPool({
     favourableChars: candidateChars,
     imageryQuery,
   });
@@ -103,12 +105,12 @@ export async function runNamingPipeline(
     surnameInstruction: input.surnameInstruction,
     candidateChars,
   };
-  let ctx: VerifyContext = {
+  const ctx: VerifyContext = {
     pool,
     favourableElements: input.favourableElements,
     avoidElements: input.avoidElements,
     gender: input.gender,
-    requireTwoGivenChars: true, // 正常只出双字名(姓+2);单字仅由确定性兜底 ③.6 产出
+    requireTwoGivenChars: true, // 正常只出双字名(姓+2);单字仅由确定性兜底产出
     expectedSurname: input.surnameChar, // 指定姓模式才有值;auto 模式 undefined → 不校验
   };
 
@@ -117,11 +119,14 @@ export async function runNamingPipeline(
   const first = await safeComposer(profile, pool);
   let analysis = first.analysis;
 
-  // ③ 校验,不足 3 个则带反馈重生成一轮
+  // ③ 校验;只有 0 个通过时才带反馈重生成一轮(evaluator-optimizer lightweight retry).
+  // 1–2 verified names are accepted as-is — no slow rescue ladder.
   onProgress(3, TOTAL, "Verifying authenticity…");
   let verified = passing(first.candidates, ctx);
+  round1Verified = verified.length;
 
-  if (verified.length < 3) {
+  if (verified.length < 1) {
+    composerCalls++;
     const failed = first.candidates
       .map((c) => ({ c, r: verifyCandidate(c, ctx) }))
       .filter((x) => !x.r.ok)
@@ -136,56 +141,12 @@ export async function runNamingPipeline(
     verified = dedupe([...verified, ...passing(retry.candidates, ctx)], ctx);
   }
 
-  // ③.5 兜底:重生成后仍 <3 → 大幅拓宽检索(更多候选字×更多真句),再要一轮【双字名】。
-  // 喜用神受限的命盘(如女命忌水木、喜用全偏阳)候选稀,但拓宽后双字成词名通常仍能凑齐;
-  // 【不再强制单字名】—— 单字名质量塌方(国学评审 2026-06-12),只留给 ③.6 确定性兜底。
-  // deadline 守卫:已逼近 300s 上限就跳过这层慢 LLM 兜底,落到 ③.6 纯代码救援。
-  if (verified.length < 3 && Date.now() < deadlineMs) {
-    onProgress(3, TOTAL, "Broadening the search for more options…");
-    const broader = await buildVerifiedPool({
-      favourableChars: candidateChars,
-      imageryQuery,
-      perArm: 40,
-      cap: 45,
-    });
-    const seen = new Set(pool.map((p) => p.chunkId));
-    pool = [...pool, ...broader.filter((p) => !seen.has(p.chunkId))];
-    ctx = { ...ctx, pool };
-    const broadenFeedback =
-      `Only ${verified.length} valid name(s) so far — the favourable elements are constrained. ` +
-      `The pool has been BROADENED with more lines. Find more TWO-given-character names (surname + 2 ` +
-      `characters that form a word/image, both in one pool line, e.g. 松月 清泉 晓露). Give 8.`;
-    const rescue = await safeComposer(profile, pool, broadenFeedback);
-    if (!analysis) analysis = rescue.analysis;
-    verified = dedupe([...verified, ...passing(rescue.candidates, ctx)], ctx);
-  }
-
-  // ③.5b 单字补缺(仅当双字拓宽后仍 <3):喜用神太窄、双字成词名确实凑不齐时,才允许
-  // 单字名(姓+1)补到 3 个 —— 双字已优先,单字是"万不得已"。此层放开 requireTwoGivenChars。
-  // deadline 守卫:同上,逼近超时就跳过,交给 ③.6 纯代码救援保 always-3。
-  if (verified.length < 3 && Date.now() < deadlineMs) {
-    const singleFeedback =
-      `Still under 3 valid names — the favourable elements are too constrained for more ` +
-      `two-character names. Now produce SINGLE-character given names: surname + ONE favourable, ` +
-      `gender-appropriate character from a pool line (e.g. 苏瑶 苏昭 苏皎). Give 8.`;
-    const singleProfile: ComposerProfile = {
-      ...profile,
-      recommendedNameLength: "2 characters (Surname + 1 Name)",
-    };
-    const singleCtx: VerifyContext = { ...ctx, requireTwoGivenChars: false };
-    const rescue2 = await safeComposer(singleProfile, pool, singleFeedback);
-    if (!analysis) analysis = rescue2.analysis;
-    verified = dedupe([...verified, ...passing(rescue2.candidates, singleCtx)], ctx);
-  }
-
-  // ③.6 终极兜底(deterministic):仍 <3 → 纯代码从池子里扫"喜用神+性别合宜"的单字,
-  // 与姓配成 2 字名,无需 LLM,几乎必过校验。点评/寓意用极简模板填充(诚实交代)。
-  // 这是"always-3"的最终保险,只在 LLM 多次随机后仍凑不齐时启动。
-  if (verified.length < 3) {
-    // 优先级:用户指定姓 > LLM 已经成功用过的姓 > 兜底常用姓(李,中国人口最多)。
-    // 旧实现在 auto 模式下若 LLM 完全没出过 candidate(parse 全失败/refusal)→
-    // surnameForRescue="" → 整个 rescue 被静默跳过,always-3 落空。落到 "李" 作为
-    // last-mile 默认值,确保即使 LLM 全军覆没也能交付 ≥1 个名(诚实标注在 masterComment)。
+  // ③.6 Deterministic rescue: both composer rounds produced zero usable names →
+  // pure-code scan of the pool for favourable-element name-suitable chars.
+  // Produces exactly 1 surname+1 name (姓+1) — honest annotation in masterComment.
+  // No LLM, near-instant, structurally grounded. The "never return 0 names" guarantee.
+  if (verified.length === 0) {
+    // Priority: user-specified surname > surname from any LLM candidate > fallback 李.
     const FALLBACK_SURNAME = "李";
     const surnameForRescue =
       input.surnameChar ||
@@ -193,19 +154,23 @@ export async function runNamingPipeline(
       first.candidates[0]?.surnameChar ||
       FALLBACK_SURNAME;
     const isFallback = surnameForRescue === FALLBACK_SURNAME && !input.surnameChar;
+    deterministicRescueFired = true;
+    usedFallbackSurname = isFallback;
+    console.log("[naming-pipeline] deterministic rescue fired");
     const rescued = rescueDeterministic(
       surnameForRescue,
       ctx,
-      3 - verified.length,
+      1, // floor of 1 — never pad to 3; one clean name beats three padded junk names
       isFallback
     );
     verified = dedupe([...verified, ...rescued], ctx);
   }
 
-  // ④ 评审先生打分排序、挑最自然的 3 个(评审失败则优雅降级用校验顺序)
+  // ④ 评审先生打分排序(仅 >3 候选时启动 — ≤3 直接输出,无需评审裁剪)
+  // 评审失败则优雅降级用校验顺序。
   onProgress(4, TOTAL, "The review master is judging…");
   let ordered = verified;
-  if (verified.length > 1) {
+  if (verified.length > 3) {
     try {
       const rankings = await runCritic(profile, verified, pool);
       if (rankings.length > 0) {
@@ -244,8 +209,8 @@ export async function runNamingPipeline(
     }
   }
 
-  // ⑤ 终选:优先取【来自不同诗】的 3 个(防同一首诗出多个名,增强独属感);
-  //    不足 3 个再从剩余按原排序补齐。ordered 已按 critic 分降序,故同诗取分最高者。
+  // ⑤ 终选:优先取【来自不同诗】的名(防同一首诗出多个名,增强独属感);
+  //    不足再从剩余按原排序补齐。ordered 已按 critic 分降序,故同诗取分最高者。
   const picked: ComposerCandidate[] = [];
   const usedLines = new Set<number>();
   for (const c of ordered) {
@@ -262,6 +227,18 @@ export async function runNamingPipeline(
   // ⑥ 回填出处 + 五行/拼音 → NameOption(出处一律来自候选池,非 LLM 文本)
   onProgress(5, TOTAL, "Revealing your names…");
   const names = picked.map((c) => hydrate(c, pool));
+
+  console.log(
+    "[naming-pipeline]",
+    JSON.stringify({
+      round1Verified,
+      composerCalls,
+      deterministicRescueFired,
+      finalCount: names.length,
+      usedFallbackSurname,
+    })
+  );
+
   return { names, analysis };
 }
 
@@ -294,7 +271,7 @@ function dedupe(
   cands.forEach((c, i) => {
     // 按【给定名】去重(非全名)。auto 选姓模式下,取名先生会给同一个名(如「明月」)
     // 配不同姓 → 全名不同但名相同,用户拿到的其实是"同一个名字"。按给定名去重可逼出
-    // 3 个【真正不同】的名(不足则兜底补齐 always-3)。specified 姓模式下姓相同,等价。
+    // 3 个【真正不同】的名(不足则兜底补齐 floor-1)。specified 姓模式下姓相同,等价。
     const key = c.givenChars.join("");
     const prev = bestByKey.get(key);
     if (!prev || quality(c) > quality(prev)) bestByKey.set(key, c);
@@ -307,7 +284,7 @@ function dedupe(
 }
 
 // rescueDeterministic 已抽到 ./rescue(纯模块:不引 API 客户端,便于零成本确定性单测;
-// 见文件顶部 import)。它做分级放宽以保证 always-3 —— 详见 rescue.ts。
+// 见文件顶部 import)。它做分级放宽以保证 floor-1 —— 详见 rescue.ts。
 
 // 把候选名"水化"成前端契约 NameOption —— 出处/原文一律来自候选池(代码),非 LLM 文本。
 function hydrate(c: ComposerCandidate, pool: ScoredPoem[]): NameOption {
