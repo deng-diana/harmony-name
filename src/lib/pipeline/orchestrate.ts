@@ -14,7 +14,7 @@ import {
   type ComposerProfile,
   type ComposerCandidate,
 } from "../agents/composer";
-import { verifyCandidate, type VerifyContext } from "../verify";
+import { verifyCandidate, deriveGroundedSpan, type VerifyContext } from "../verify";
 import { runCritic } from "../agents/critic";
 import { candidateCharsFor, elementOfChar, pinyinOf } from "../namechars";
 import { rescueDeterministic } from "./rescue";
@@ -246,7 +246,21 @@ function passing(
   candidates: ComposerCandidate[],
   ctx: VerifyContext
 ): ComposerCandidate[] {
-  return dedupe(candidates.filter((c) => verifyCandidate(c, ctx).ok), ctx);
+  const passed = candidates.filter((c) => {
+    if (!verifyCandidate(c, ctx).ok) return false;
+    // Normalise charSpan to the minimal grounded span so that:
+    //   • hydrate()'s indexOf bracing is anchored to the tightest window
+    //     (fixes a latent double-brace bug when a given char repeats in the line), and
+    //   • dedupe()'s charSpan.length quality tiebreaker reflects the real span.
+    // verifyCandidate already confirmed deriveGroundedSpan returns non-null here.
+    const line = ctx.pool.find((p) => p.chunkId === c.lineId);
+    if (line) {
+      const minimal = deriveGroundedSpan(line.chunkText, c.givenChars);
+      if (minimal) c.charSpan = minimal;
+    }
+    return true;
+  });
+  return dedupe(passed, ctx);
 }
 
 /**
