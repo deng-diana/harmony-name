@@ -19,7 +19,7 @@ npm run dev        # Next.js dev server (Turbopack)
 npm run build      # Production build
 npm run start      # Serve production build
 npm run lint       # ESLint (eslint-config-next)
-npm test           # vitest run — currently 48 tests across 3 files
+npm test           # vitest run — currently 69 tests across 4 files
 npx tsc            # Type-check only (tsconfig has noEmit)
 ```
 
@@ -60,7 +60,7 @@ Database schema lives in `supabase/migrations/001_create_poems_tables.sql`, then
 - `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` — pgvector access (service-role key; `supabaseAdmin.ts` is server-only, never import it in client code)
 
 Optional:
-- `NAMING_PIPELINE_V2` — set to `"true"` to enable the v2 multi-agent grounded pipeline. Unset / any other value → the legacy single-shot Claude path runs. **Currently unset in prod.**
+- `NAMING_PIPELINE_V2` — set to `"true"` to enable the v2 multi-agent grounded pipeline. Unset / any other value → the legacy single-shot Claude path runs. **Currently set to `"true"` in prod → the v2 multi-agent pipeline is LIVE** (confirmed 2026-06-29 from prod UI/DB artifacts; the earlier "unset in prod" note was stale and wrong).
 - `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` — enables per-user rate limiting on `/api/generate`. Skipped silently if absent.
 - `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` / `NEXT_PUBLIC_STRIPE_*` — Stripe is in TEST mode; live keys are intentionally not configured.
 
@@ -77,7 +77,7 @@ src/app/app/page.tsx  (the app; src/app/page.tsx is the landing page)
 
   /api/generate route then forks on NAMING_PIPELINE_V2:
 
-  v2 (flag = "true") — multi-agent grounded pipeline  [src/lib/pipeline/orchestrate.ts]
+  v2 (flag = "true"; CURRENTLY LIVE IN PROD) — multi-agent grounded pipeline  [src/lib/pipeline/orchestrate.ts]
       ① candidateCharsFor(favourable, gender)        [src/lib/namechars.ts]
         + buildVerifiedPool({chars, imageryQuery})   [src/lib/retriever.ts: by-chars + semantic]
       ② Composer 取名先生 (Claude)                    [src/lib/agents/composer.ts]
@@ -89,7 +89,7 @@ src/app/app/page.tsx  (the app; src/app/page.tsx is the landing page)
           evaluator-optimizer scoring, taste only — not facts
       ⑤ hydrate(): code fills citation/原文/pinyin/element from pool & namechars
 
-  legacy (flag unset/false; CURRENTLY LIVE IN PROD) — single-shot Claude
+  legacy (flag unset/false; fallback path, NOT currently live in prod) — single-shot Claude
       → searchPoems()              [RAG, src/lib/retriever.ts]
       → claude.messages.create()   [prompt-only grounding via src/lib/prompt.ts]
 ```
@@ -105,7 +105,7 @@ SSE streaming, **expects the BaZi profile already computed** (gender, dayMaster,
 4. `deductCredit()` → 402 `INSUFFICIENT_CREDITS` if empty. See `src/lib/credits.ts`.
 5. SSE stream opens. On *any* generation failure (empty content, parse error, NO_VERIFIED_NAMES, thrown exception) → `refundCredit(user.id)` then `error` event with `creditsRemaining`. Refund is idempotent (one-shot `refunded` flag).
 
-**Pipeline switch:** `const PIPELINE_V2 = process.env.NAMING_PIPELINE_V2 === "true"`. Unset in prod today → the legacy single-shot path is live. Set to `"true"` to route through the multi-agent pipeline. Both paths archive to the `generations` table and emit the same `result` shape.
+**Pipeline switch:** `const PIPELINE_V2 = process.env.NAMING_PIPELINE_V2 === "true"`. **Set to `"true"` in prod → the v2 multi-agent path is live** (confirmed 2026-06-29). Unset/false would fall back to the legacy single-shot path. Both paths archive to the `generations` table and emit the same `result` shape.
 
 ### v2 multi-agent pipeline — `src/lib/pipeline/orchestrate.ts`
 
