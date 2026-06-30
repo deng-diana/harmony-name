@@ -103,7 +103,10 @@ describe("verifyCandidate", () => {
     expect(r.ok).toBe(true);
   });
 
-  it("rejects an over-long charSpan (whole long line, not a tight word)", () => {
+  it("auto-tightens an over-wide charSpan, then judges on real rules (清明 = solar term, not 'too long')", () => {
+    // The LLM passed the whole clause as charSpan. The code now DERIVES the minimal
+    // grounded span 清明 (the two given chars are adjacent in the line) and the name
+    // is rejected for its REAL reason — 清明 is a solar term — not for span length.
     const r = verifyCandidate(
       {
         lineId: 1,
@@ -114,7 +117,56 @@ describe("verifyCandidate", () => {
       ctx()
     );
     expect(r.ok).toBe(false);
-    expect(r.reasons.join()).toMatch(/过长/);
+    expect(r.reasons.join()).toMatch(/整体不宜作名/);
+    expect(r.reasons.join()).not.toMatch(/过长/);
+  });
+
+  it("PASSES an over-wide charSpan when the given chars are a real tight word (清昊)", () => {
+    // Core regression guard for the charSpan fix: the LLM over-extends the span to
+    // the whole line, but 清昊 is a genuine adjacent pair → the derived minimal span
+    // makes it pass instead of being rejected on the wedged-content-char rule.
+    const r = verifyCandidate(
+      { lineId: 20, charSpan: "清昊生晚晴", surnameChar: "邓", givenChars: ["清", "昊"] },
+      ctx({ pool: [poem(20, "清昊生晚晴")] })
+    );
+    expect(r.ok).toBe(true);
+    expect(r.reasons).toEqual([]);
+  });
+
+  it("PASSES when a function word sits between the two given chars (清兮昊)", () => {
+    const r = verifyCandidate(
+      { lineId: 21, charSpan: "清兮昊", surnameChar: "邓", givenChars: ["清", "昊"] },
+      ctx({ pool: [poem(21, "清兮昊")] })
+    );
+    expect(r.ok).toBe(true);
+    expect(r.reasons).toEqual([]);
+  });
+
+  it("REJECTS when a content char wedges between the given chars (no tight window) (清山昊)", () => {
+    const r = verifyCandidate(
+      { lineId: 22, charSpan: "清山昊", surnameChar: "邓", givenChars: ["清", "昊"] },
+      ctx({ pool: [poem(22, "清山昊远")] })
+    );
+    expect(r.ok).toBe(false);
+    expect(r.reasons.join()).toMatch(/无紧邻通路|中夹/);
+  });
+
+  it("picks the TIGHT pair when a given char repeats in the line (清风清昊 → 清昊)", () => {
+    const r = verifyCandidate(
+      { lineId: 23, charSpan: "清风清昊", surnameChar: "邓", givenChars: ["清", "昊"] },
+      ctx({ pool: [poem(23, "清风清昊")] })
+    );
+    expect(r.ok).toBe(true);
+    expect(r.reasons).toEqual([]);
+  });
+
+  it("REJECTS a hallucinated given char not present in the line (曦 not in 清昊)", () => {
+    const r = verifyCandidate(
+      { lineId: 11, charSpan: "清曦", surnameChar: "邓", givenChars: ["清", "曦"] },
+      ctx()
+    );
+    expect(r.ok).toBe(false);
+    expect(r.reasons.join()).toMatch(/未出现/);
   });
 
   it("rejects a masculine-coded char in a FEMALE name (郓昊: 昊 is masculine-lean)", () => {

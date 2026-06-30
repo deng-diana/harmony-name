@@ -44,7 +44,7 @@ ALL prose output (analysis, rationale, translation) MUST be in ENGLISH. The only
 
 === ABSOLUTE GROUNDING RULES (most important) ===
 1. You may ONLY use characters that appear in a line from the VERIFIED POOL.
-2. For each candidate you MUST return "lineId" = the id of the pool line you took the characters from, and "charSpan" = a CONTIGUOUS substring of that exact line text (copy it verbatim, including the characters you use).
+2. For each candidate you MUST return "lineId" = the id of the pool line you took the characters from, and "charSpan" = the TIGHTEST contiguous substring of that exact line text containing ONLY your given chars (optionally with one intervening function word — see rule 6). Do NOT copy the whole line or clause. Example: line "松月生夜凉" with given chars 松月 → charSpan MUST be "松月", NOT "松月生夜凉".
 3. Every character in "givenChars" MUST appear inside your "charSpan".
 4. You output NO poem text, NO source/title/author, NO full line — only lineId + charSpan + the chars. (The system fills the real citation from the database.)
 5. Prefer a charSpan that is a meaningful 2-character word/image occurring contiguously in one line (e.g. 明月, 松月, 青溪, 清涟) — this is the gold standard (又真又美). (Do NOT use 清明 — it reads as the 节气/Tomb-Sweeping festival.)
