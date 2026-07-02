@@ -10,6 +10,23 @@
  *
  * Lazy client init: no client is constructed at module load time, so
  * `next build` without API keys still succeeds (same pattern as openai.ts / claude.ts).
+ *
+ * ── DeepSeek empty-response diagnosis (2026-07-02) ─────────────────────────────
+ * Prior symptom: `deepseek-v4-flash` and `deepseek-v4-pro` returned RAW LENGTH 0
+ * through this adapter and were very slow (93–173s). Root cause found by probing
+ * the API directly with the real composer prompt: BOTH v4 models are REASONING
+ * models. On our complex composer task they spend the ENTIRE `max_tokens` budget
+ * on chain-of-thought (`usage.completion_tokens_details.reasoning_tokens` == the
+ * full budget; `message.reasoning_content` grows to 20k+ chars) and hit
+ * `finish_reason: "length"` BEFORE emitting any answer → `message.content` is "".
+ * Raising max_tokens does not help — the CoT just expands to fill it.
+ * The old `?? ""` silently coerced this to an empty string, so callers saw 0
+ * candidates and fell into the rescue ladder instead of a loud error.
+ * `deepseek-chat` (NON-reasoning) returns clean JSON on the same prompt
+ * (finish_reason=stop, ~4.5k chars) — it is the only usable DeepSeek model here.
+ * Fix below: fail loud on empty content (with finish_reason + usage), fall back to
+ * reasoning_content only as a last resort, and log per-call token usage for both
+ * providers via a structured [llm-usage] line.
  */
 import OpenAI from "openai";
 import { getClaude } from "./claude";
@@ -89,12 +106,14 @@ export async function namingComplete(opts: NamingCompleteOpts): Promise<string> 
   const provider = getNamingProvider();
 
   if (provider === "deepseek") {
+    const model = resolveNamingModel();
     const systemText = opts.systemDynamic
       ? `${opts.system}\n\n${opts.systemDynamic}`
       : opts.system;
+    const t0 = Date.now();
     const response = await getDeepSeek().chat.completions.create(
       {
-        model: resolveNamingModel(),
+        model,
         messages: [
           { role: "system", content: systemText },
           { role: "user", content: opts.user },
@@ -106,11 +125,49 @@ export async function namingComplete(opts: NamingCompleteOpts): Promise<string> 
       // OpenAI-compatible SDK accepts a per-request signal in the options arg.
       opts.signal ? { signal: opts.signal } : undefined
     );
-    return response.choices[0]?.message?.content ?? "";
+    const ms = Date.now() - t0;
+
+    const choice = response.choices[0];
+    // Some DeepSeek reasoner models expose chain-of-thought under a non-standard
+    // `reasoning_content` field the OpenAI SDK types don't declare — read it defensively.
+    const msg = (choice?.message ?? {}) as {
+      content?: string | null;
+      reasoning_content?: string | null;
+    };
+    const content = (msg.content ?? "").trim();
+    const reasoning = (msg.reasoning_content ?? "").trim();
+    const finish = choice?.finish_reason;
+
+    console.log(
+      `[llm-usage] provider=deepseek model=${model} input_tokens=${
+        response.usage?.prompt_tokens ?? "?"
+      } output_tokens=${response.usage?.completion_tokens ?? "?"} ms=${ms} finish=${finish}`
+    );
+
+    if (content) return content;
+
+    // Empty content — diagnose loudly instead of silently returning "".
+    if (finish === "length") {
+      // Reasoning models burn the whole max_tokens budget on chain-of-thought and
+      // emit no answer. Raising max_tokens does not help — use a non-reasoning model.
+      throw new Error(
+        `[llm] DeepSeek returned EMPTY content with finish_reason=length — the model ` +
+          `exhausted the ${opts.maxTokens}-token budget on chain-of-thought before answering ` +
+          `(this is a reasoning model). Use a non-reasoning model such as deepseek-chat. ` +
+          `model=${model} usage=${JSON.stringify(response.usage)}`
+      );
+    }
+    // Last resort: a reasoner that put its answer in reasoning_content.
+    if (reasoning) return reasoning;
+    throw new Error(
+      `[llm] DeepSeek returned EMPTY content. id=${response.id} finish_reason=${finish} ` +
+        `usage=${JSON.stringify(response.usage)}`
+    );
   }
 
   // Anthropic (default) — reproduces the getClaude().messages.create pattern exactly:
   // a cached static block + an optional uncached per-request block (the pool).
+  const t0 = Date.now();
   const message = await getClaude().messages.create(
     {
       model: NAMING_MODEL,
@@ -130,6 +187,15 @@ export async function namingComplete(opts: NamingCompleteOpts): Promise<string> 
     },
     // Anthropic SDK accepts a per-request signal in the options arg.
     opts.signal ? { signal: opts.signal } : undefined
+  );
+  const ms = Date.now() - t0;
+
+  console.log(
+    `[llm-usage] provider=anthropic model=${NAMING_MODEL} input_tokens=${
+      message.usage?.input_tokens ?? "?"
+    } output_tokens=${message.usage?.output_tokens ?? "?"} ms=${ms} finish=${
+      message.stop_reason ?? "?"
+    }`
   );
 
   const textBlock = message.content.find((b) => b.type === "text");
