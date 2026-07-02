@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "vitest run"
+    "test": "vitest run",
+    "backup:corpus": "npx tsx scripts/backup-corpus.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",
