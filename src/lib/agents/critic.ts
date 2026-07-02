@@ -48,7 +48,8 @@ Return ONLY this JSON (no markdown):
 export async function runCritic(
   profile: ComposerProfile,
   candidates: ComposerCandidate[],
-  pool: ScoredPoem[]
+  pool: ScoredPoem[],
+  signal?: AbortSignal // 客户端断开时取消在途 Claude 请求(见 llm.ts)
 ): Promise<CriticRanking[]> {
   if (candidates.length === 0) return [];
 
@@ -87,6 +88,7 @@ Score every candidate and return ONLY the JSON.`.trim();
     user: userMessage,
     maxTokens: 2048,
     temperature: 0.4,
+    signal,
   });
 
   let parsed: { rankings?: unknown[] } | null = null;

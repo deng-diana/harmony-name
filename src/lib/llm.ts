@@ -65,6 +65,12 @@ export interface NamingCompleteOpts {
   maxTokens: number;
   /** Sampling temperature (optional; provider default used if omitted). */
   temperature?: number;
+  /**
+   * Optional AbortSignal — when the caller (e.g. the SSE route) sees the client
+   * disconnect, aborting the signal cancels the in-flight LLM request so we stop
+   * paying for tokens nobody will read. Both SDKs accept a per-request signal.
+   */
+  signal?: AbortSignal;
 }
 
 /**
@@ -86,37 +92,45 @@ export async function namingComplete(opts: NamingCompleteOpts): Promise<string> 
     const systemText = opts.systemDynamic
       ? `${opts.system}\n\n${opts.systemDynamic}`
       : opts.system;
-    const response = await getDeepSeek().chat.completions.create({
-      model: resolveNamingModel(),
-      messages: [
-        { role: "system", content: systemText },
-        { role: "user", content: opts.user },
-      ],
-      max_tokens: opts.maxTokens,
-      ...(opts.temperature !== undefined ? { temperature: opts.temperature } : {}),
-      response_format: { type: "json_object" },
-    });
+    const response = await getDeepSeek().chat.completions.create(
+      {
+        model: resolveNamingModel(),
+        messages: [
+          { role: "system", content: systemText },
+          { role: "user", content: opts.user },
+        ],
+        max_tokens: opts.maxTokens,
+        ...(opts.temperature !== undefined ? { temperature: opts.temperature } : {}),
+        response_format: { type: "json_object" },
+      },
+      // OpenAI-compatible SDK accepts a per-request signal in the options arg.
+      opts.signal ? { signal: opts.signal } : undefined
+    );
     return response.choices[0]?.message?.content ?? "";
   }
 
   // Anthropic (default) — reproduces the getClaude().messages.create pattern exactly:
   // a cached static block + an optional uncached per-request block (the pool).
-  const message = await getClaude().messages.create({
-    model: NAMING_MODEL,
-    max_tokens: opts.maxTokens,
-    ...(opts.temperature !== undefined ? { temperature: opts.temperature } : {}),
-    system: [
-      {
-        type: "text",
-        text: opts.system,
-        cache_control: { type: "ephemeral" },
-      },
-      ...(opts.systemDynamic
-        ? [{ type: "text" as const, text: opts.systemDynamic }]
-        : []),
-    ],
-    messages: [{ role: "user", content: opts.user }],
-  });
+  const message = await getClaude().messages.create(
+    {
+      model: NAMING_MODEL,
+      max_tokens: opts.maxTokens,
+      ...(opts.temperature !== undefined ? { temperature: opts.temperature } : {}),
+      system: [
+        {
+          type: "text",
+          text: opts.system,
+          cache_control: { type: "ephemeral" },
+        },
+        ...(opts.systemDynamic
+          ? [{ type: "text" as const, text: opts.systemDynamic }]
+          : []),
+      ],
+      messages: [{ role: "user", content: opts.user }],
+    },
+    // Anthropic SDK accepts a per-request signal in the options arg.
+    opts.signal ? { signal: opts.signal } : undefined
+  );
 
   const textBlock = message.content.find((b) => b.type === "text");
   return textBlock && "text" in textBlock ? textBlock.text : "";

@@ -50,32 +50,70 @@ export interface PipelineResult {
 }
 
 type ProgressFn = (step: number, total: number, message: string) => void;
+
+export interface RunPipelineOptions {
+  onProgress?: ProgressFn;
+  /**
+   * Client-disconnect signal. When aborted, in-flight LLM calls are cancelled and
+   * the pipeline throws an AbortError between stages so we stop paying for a result
+   * nobody will read. Threaded down to the Composer/Critic → Anthropic SDK.
+   */
+  signal?: AbortSignal;
+  /**
+   * Optional error sink for SILENT degradations (a swallowed Composer/Critic API
+   * failure). orchestrate.ts must stay importable by non-Next contexts, so it does
+   * NOT import @sentry/nextjs directly — the route wires Sentry.captureException in
+   * through this callback instead. Without it, degradations stay console-only.
+   */
+  onError?: (err: unknown, stage: string) => void;
+}
 const TOTAL = 5;
+
+/** Distinctive error thrown when the client disconnected mid-pipeline. */
+function makeAbortError(): Error {
+  const err = new Error("Naming pipeline aborted by client disconnect");
+  err.name = "AbortError";
+  return err;
+}
+
+/** Throw an AbortError if the caller's signal has fired. Checked between stages. */
+function throwIfAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) throw makeAbortError();
+}
 
 // Composer 安全包装:一次 Claude API 异常(529 过载/超时/SDK 重试耗尽)不应炸掉整条
 // 管线 —— 否则已通过校验的 1~2 个合法名 + ③.6 纯代码兜底全被连坐。失败时降级为
 // "这一轮 0 候选",自然落入下一兜底层,最终走到确定性救援保 floor-1。
+// 例外:客户端断开(signal aborted)不是"降级",要向上抛 AbortError 让编排层停手。
 async function safeComposer(
   profile: ComposerProfile,
   pool: ScoredPoem[],
-  feedback?: string
+  feedback: string | undefined,
+  opts: RunPipelineOptions
 ): Promise<{ analysis: string; candidates: ComposerCandidate[] }> {
   try {
-    return await runComposer(profile, pool, feedback);
+    return await runComposer(profile, pool, feedback, opts.signal);
   } catch (e) {
+    // An aborted signal means the client left — propagate, do not degrade to rescue.
+    if (opts.signal?.aborted) throw makeAbortError();
     console.error(
       "Composer call failed, degrading to next tier:",
       e instanceof Error ? e.message : e
     );
+    // Surface the silent degradation (e.g. an Anthropic outage) so a green Sentry
+    // dashboard no longer hides a run that quietly shipped rescue names.
+    opts.onError?.(e, "composer");
     return { analysis: "", candidates: [] };
   }
 }
 
 export async function runNamingPipeline(
   input: PipelineInput,
-  opts: { onProgress?: ProgressFn } = {}
+  opts: RunPipelineOptions = {}
 ): Promise<PipelineResult> {
   const onProgress = opts.onProgress ?? (() => {});
+  const { signal } = opts;
+  throwIfAborted(signal);
 
   // Observability counters — emitted as a single JSON line at the end of each run.
   let round1Verified = 0;
@@ -94,6 +132,7 @@ export async function runNamingPipeline(
     imageryQuery,
   });
   if (pool.length === 0) return { names: [] }; // 调用方据此退款
+  throwIfAborted(signal);
 
   const profile: ComposerProfile = {
     gender: input.gender,
@@ -116,8 +155,9 @@ export async function runNamingPipeline(
 
   // ② 取名先生组名
   onProgress(2, TOTAL, "The naming master is composing…");
-  const first = await safeComposer(profile, pool);
+  const first = await safeComposer(profile, pool, undefined, opts);
   let analysis = first.analysis;
+  throwIfAborted(signal);
 
   // ③ 校验;只有 0 个通过时才带反馈重生成一轮(evaluator-optimizer lightweight retry).
   // 1–2 verified names are accepted as-is — no slow rescue ladder.
@@ -136,9 +176,10 @@ export async function runNamingPipeline(
           `- ${x.c.surnameChar}${x.c.givenChars.join("")}: ${x.r.reasons.join("; ")}`
       )
       .join("\n");
-    const retry = await safeComposer(profile, pool, failed);
+    const retry = await safeComposer(profile, pool, failed, opts);
     if (!analysis) analysis = retry.analysis;
     verified = dedupe([...verified, ...passing(retry.candidates, ctx)], ctx);
+    throwIfAborted(signal);
   }
 
   // ③.6 Deterministic rescue: both composer rounds produced zero usable names →
@@ -169,10 +210,11 @@ export async function runNamingPipeline(
   // ④ 评审先生打分排序(仅 >3 候选时启动 — ≤3 直接输出,无需评审裁剪)
   // 评审失败则优雅降级用校验顺序。
   onProgress(4, TOTAL, "The review master is judging…");
+  throwIfAborted(signal);
   let ordered = verified;
   if (verified.length > 3) {
     try {
-      const rankings = await runCritic(profile, verified, pool);
+      const rankings = await runCritic(profile, verified, pool, signal);
       if (rankings.length > 0) {
         // byIdx 保护:LLM 偶尔会返回:
         //   ① 重复 idx —— Map 会 last-write-wins,旧实现静默覆盖 score(可能丢真分);
@@ -205,7 +247,11 @@ export async function runNamingPipeline(
           .map((x) => x.c);
       }
     } catch (e) {
+      // Client left mid-critic → propagate the abort, don't fall through to output.
+      if (signal?.aborted) throw makeAbortError();
       console.error("Critic failed, using verify order:", e instanceof Error ? e.message : e);
+      // Surface the silent critic failure so a degraded run isn't invisible in Sentry.
+      opts.onError?.(e, "critic");
     }
   }
 

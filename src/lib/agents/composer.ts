@@ -143,7 +143,8 @@ TASK: Produce EXACTLY 8 candidates per the rules. Output ONLY the JSON object.
 export async function runComposer(
   profile: ComposerProfile,
   pool: ScoredPoem[],
-  feedback?: string // 评审先生的重生成反馈(可选)
+  feedback?: string, // 评审先生的重生成反馈(可选)
+  signal?: AbortSignal // 客户端断开时取消在途 Claude 请求(见 llm.ts)
 ): Promise<{ analysis: string; candidates: ComposerCandidate[] }> {
   const userMessage =
     buildComposerUserMessage(profile) +
@@ -161,6 +162,7 @@ export async function runComposer(
     user: userMessage,
     maxTokens: 8192,
     temperature: 0.8,
+    signal,
   });
 
   const parsed = parseJsonLoose(content);

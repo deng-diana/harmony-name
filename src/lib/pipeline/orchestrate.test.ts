@@ -213,3 +213,21 @@ describe("runNamingPipeline — deterministic rescue on zero verified", () => {
     expect(vi.mocked(runCritic)).not.toHaveBeenCalled();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Suite 4: abort propagation (client disconnect)
+// ---------------------------------------------------------------------------
+
+describe("runNamingPipeline — abort propagation", () => {
+  it("throws a named AbortError when the signal is already aborted", async () => {
+    vi.mocked(buildVerifiedPool).mockResolvedValue(TEST_POOL);
+    vi.mocked(runComposer).mockResolvedValue({ analysis: "", candidates: [CAND_1] });
+
+    const controller = new AbortController();
+    controller.abort(); // client already gone before we start
+
+    await expect(
+      runNamingPipeline(baseInput, { signal: controller.signal })
+    ).rejects.toThrow(/aborted/i);
+  });
+});

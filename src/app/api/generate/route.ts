@@ -130,13 +130,41 @@ export async function POST(request: Request) {
   const stream = new TransformStream();
   const writer = stream.writable.getWriter();
 
-  const sendEvent = async (type: string, payload: Record<string, unknown>) => {
-    await writer.write(encoder.encode(`data: ${JSON.stringify({ type, ...payload })}\n\n`));
+  // sendEvent MUST NEVER THROW: once the client disconnects, writer.write() rejects.
+  // If that rejection escaped into failAndRefund / the catch, it would re-reject on a
+  // dead writer and surface as an unhandledRejection. So we swallow write failures
+  // here and return a boolean the caller may inspect.
+  const sendEvent = async (
+    type: string,
+    payload: Record<string, unknown>
+  ): Promise<boolean> => {
+    try {
+      await writer.write(
+        encoder.encode(`data: ${JSON.stringify({ type, ...payload })}\n\n`)
+      );
+      return true;
+    } catch {
+      return false; // client gone / writer closed — never throw from an SSE write
+    }
   };
+
+  // SSE keepalive: the Composer call can run 30–60s with no progress event, and idle
+  // proxies kill silent streams. A comment frame (starts with ":") is NOT a data event
+  // — the client parser splits on "\n\n" then looks for a "data: " line, so it ignores
+  // these. Fire every 15s; cleared in finally. Never throws (fire-and-forget catch).
+  const keepaliveTimer = setInterval(() => {
+    writer.write(encoder.encode(`: keepalive\n\n`)).catch(() => {});
+  }, 15_000);
 
   (async () => {
     let refunded = false;
-    // 失败统一出口: 退款 + 推送 error 事件(并把退还后的余额带给前端)
+    // Flip to true the instant the pipeline yields real names — BEFORE archive/result
+    // write. Guards the post-success disconnect loophole: if a later step (archive or
+    // the result write) fails because the client left, the user already earned their
+    // result, so we must NOT refund on that path (see the catch below).
+    let generationSucceeded = false;
+    // 失败统一出口: 退款 + 推送 error 事件(并把退还后的余额带给前端)。
+    // sendEvent 已保证不抛,故这里的 await 不会因客户端断开而 reject。
     const failAndRefund = async (payload: Record<string, unknown>) => {
       if (!refunded) {
         await refundCredit(user.id);
@@ -177,9 +205,15 @@ export async function POST(request: Request) {
           },
           {
             onProgress: (step, total, message) => {
-              // fire-and-forget,但吞掉 rejection:客户端断开后再写会 reject,
-              // 不 catch 会变成 unhandledRejection。
-              sendEvent("progress", { step, total, message }).catch(() => {});
+              // fire-and-forget;sendEvent 已吞掉写失败,不会变成 unhandledRejection。
+              void sendEvent("progress", { step, total, message });
+            },
+            // Cancel in-flight LLM calls when the client disconnects (stop paying).
+            signal: request.signal,
+            // Escalate SILENT LLM degradations (swallowed Composer/Critic API errors)
+            // to Sentry — orchestrate.ts stays Sentry-free and calls back through here.
+            onError: (err, stage) => {
+              Sentry.captureException(err, { tags: { pipeline_stage: stage } });
             },
           }
         );
@@ -222,21 +256,25 @@ export async function POST(request: Request) {
           recommendedNameLength,
         });
 
-        const message = await getClaude().messages.create({
-          model: NAMING_MODEL,
-          max_tokens: 4096,
-          temperature: 0.7,
-          // 静态指令缓存(省 ~90% 输入 token);诗词块每次不同,不缓存
-          system: [
-            {
-              type: "text",
-              text: createSystemPromptStatic(),
-              cache_control: { type: "ephemeral" },
-            },
-            { type: "text", text: buildPoemsBlock(poemsContextText) },
-          ],
-          messages: [{ role: "user", content: userMessage }],
-        });
+        const message = await getClaude().messages.create(
+          {
+            model: NAMING_MODEL,
+            max_tokens: 4096,
+            temperature: 0.7,
+            // 静态指令缓存(省 ~90% 输入 token);诗词块每次不同,不缓存
+            system: [
+              {
+                type: "text",
+                text: createSystemPromptStatic(),
+                cache_control: { type: "ephemeral" },
+              },
+              { type: "text", text: buildPoemsBlock(poemsContextText) },
+            ],
+            messages: [{ role: "user", content: userMessage }],
+          },
+          // Cancel the call if the client disconnects (same abort propagation as v2).
+          { signal: request.signal }
+        );
 
         const textBlock = message.content.find((block) => block.type === "text");
         const content = textBlock?.text;
@@ -258,6 +296,17 @@ export async function POST(request: Request) {
         }
       }
 
+      // Generation is done and usable. Mark success BEFORE any archive/result write
+      // so a downstream failure (dead-client write, DB hiccup) does NOT trigger a
+      // refund of a result the user actually earned. See the catch below.
+      generationSucceeded = true;
+
+      // --- 完成 (把扣减后的余额一并返回,前端可即时刷新显示) ---
+      // Send the result FIRST, then archive: the response is what the user paid for,
+      // so it must not be blocked by (or fail because of) a slow/failed archive insert.
+      if (!PIPELINE_V2) await sendEvent("progress", STEPS.DONE);
+      await sendEvent("result", { data: parsed, creditsRemaining });
+
       // --- 存档到历史 (user_id 由 DB 默认 auth.uid() 填充;失败不影响返回) ---
       const { error: archiveError } = await supabase.from("generations").insert({
         input: {
@@ -273,17 +322,43 @@ export async function POST(request: Request) {
       if (archiveError) {
         console.error("Failed to archive generation:", archiveError.message);
       }
-
-      // --- 完成 (把扣减后的余额一并返回,前端可即时刷新显示) ---
-      if (!PIPELINE_V2) await sendEvent("progress", STEPS.DONE);
-      await sendEvent("result", { data: parsed, creditsRemaining });
     } catch (error: unknown) {
-      // 详细原因只记到服务端日志,绝不随 SSE 发给前端
       const errMessage = error instanceof Error ? error.message : String(error);
-      console.error("Generation failed:", errMessage);
-      Sentry.captureException(error); // 上报到 Sentry(我们自己 catch 了,需手动上报)
-      await failAndRefund({ error: "Generation failed", code: "API_ERROR" });
+      // Robust abort detection: our pipeline throws a named AbortError, but an SDK
+      // abort may carry a different name — the signal being aborted is the ground truth.
+      const isAbort =
+        request.signal.aborted ||
+        (error instanceof Error && error.name === "AbortError");
+
+      if (generationSucceeded) {
+        // The result was produced (and the credit legitimately spent); only a
+        // post-success step failed — almost always the client having disconnected
+        // before the result write landed. Do NOT refund: the user earned the result.
+        // Log + Sentry so we still see the disconnect rate.
+        console.error("Post-success stream/archive failure (no refund):", errMessage);
+        Sentry.captureMessage(
+          "SSE post-success failure: result produced but stream/archive write failed",
+          { level: "warning", extra: { userId: user.id, error: errMessage } }
+        );
+      } else if (isAbort) {
+        // Client disconnected mid-generation — they paid but got nothing usable, so
+        // REFUND. Do NOT write to the dead stream (sendEvent would no-op anyway).
+        // Nothing was archived (abort throws before the archive step).
+        console.error("Generation aborted by client disconnect; refunding.");
+        if (!refunded) {
+          await refundCredit(user.id);
+          refunded = true;
+        }
+      } else {
+        // Genuine generation failure → refund + push an error event to the client.
+        // 详细原因只记到服务端日志,绝不随 SSE 发给前端。
+        console.error("Generation failed:", errMessage);
+        Sentry.captureException(error); // 我们自己 catch 了,需手动上报
+        await failAndRefund({ error: "Generation failed", code: "API_ERROR" });
+      }
     } finally {
+      // Stop the keepalive heartbeat before closing the writer.
+      clearInterval(keepaliveTimer);
       // 防御:writer 已关闭(客户端断开 / 上面分支提前 return 但 finally 兜底再 close 也无害)
       // 再 close 一次会 TypeError "Invalid state",必须吞掉 —— 否则 fire-and-forget
       // IIFE 里逃出去变成 unhandledRejection。
@@ -293,7 +368,12 @@ export async function POST(request: Request) {
         /* writer already closed — fine */
       }
     }
-  })();
+  })().catch((err) => {
+    // Last-resort guard: nothing above should throw (sendEvent/keepalive/finally are
+    // all defensive), but if anything slips through, capture it instead of letting it
+    // become an unhandledRejection.
+    Sentry.captureException(err);
+  });
 
   return new Response(stream.readable, {
     headers: {
