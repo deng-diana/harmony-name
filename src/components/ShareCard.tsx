@@ -23,13 +23,18 @@ export function ShareNameButton({
   name,
   archetype,
   label,
+  shareUrl,
 }: {
   name: NameOption;
   archetype?: Archetype;
   // When provided, render a labeled gold-accent button instead of the bare icon
   // (used by the post-reveal share strip). The modal machinery is shared.
   label?: string;
+  // Per-result public page URL (https://harmonyname.com/n/<slug>) — the viral
+  // loop's landing page. Falls back to the homepage when no slug is available.
+  shareUrl?: string;
 }) {
+  const targetUrl = shareUrl ?? "https://harmonyname.com";
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -94,7 +99,7 @@ export function ShareNameButton({
           files: [file],
           title: `My Chinese name: ${cleanHanzi}`,
           text: `${cleanHanzi} (${name.pinyin}) — my authentic Chinese name ✦`,
-          url: "https://harmonyname.com",
+          url: targetUrl,
         });
       } else {
         // 桌面端不支持分享文件 → 直接下载图片

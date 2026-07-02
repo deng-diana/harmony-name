@@ -332,27 +332,57 @@ export async function POST(request: Request) {
       // refund of a result the user actually earned. See the catch below.
       generationSucceeded = true;
 
-      // --- 完成 (把扣减后的余额一并返回,前端可即时刷新显示) ---
-      // Send the result FIRST, then archive: the response is what the user paid for,
-      // so it must not be blocked by (or fail because of) a slow/failed archive insert.
-      if (!PIPELINE_V2) await sendEvent("progress", STEPS.DONE);
-      await sendEvent("result", { data: parsed, creditsRemaining });
+      // Public share slug: a short, URL-safe id for the /n/<slug> shareable page
+      // (the viral loop). Generated server-side and written with the archive row;
+      // handed to the client in the result payload so it can build the share URL.
+      const publicSlug = crypto.randomUUID().replace(/-/g, "").slice(0, 12);
 
       // --- 存档到历史 (user_id 由 DB 默认 auth.uid() 填充;失败不影响返回) ---
+      // Written FIRST (before the result event) so we know whether the slug landed
+      // and can honestly tell the client the share URL. A failed archive must never
+      // block the paid-for result — every path below still sends the result.
+      const archiveInput = {
+        gender,
+        dayMaster,
+        strength,
+        favourableElements,
+        avoidElements,
+        recommendedNameLength,
+      };
+      let slugForClient: string | null = null;
       const { error: archiveError } = await supabase.from("generations").insert({
-        input: {
-          gender,
-          dayMaster,
-          strength,
-          favourableElements,
-          avoidElements,
-          recommendedNameLength,
-        },
+        input: archiveInput,
         result: parsed,
+        public_slug: publicSlug,
+        is_public: true,
       });
       if (archiveError) {
-        console.error("Failed to archive generation:", archiveError.message);
+        // Graceful degradation (same pattern as the Stripe webhook's 012 fallback):
+        // if migration 013 hasn't been run yet the new columns don't exist
+        // (PGRST204 = column not in schema cache; 42703 = undefined_column). Retry
+        // the insert WITHOUT the share fields so history still archives; the share
+        // feature stays quietly off (no slug in the payload) until the SQL is run.
+        if (archiveError.code === "PGRST204" || archiveError.code === "42703") {
+          const { error: retryError } = await supabase
+            .from("generations")
+            .insert({ input: archiveInput, result: parsed });
+          if (retryError) {
+            console.error("Failed to archive generation:", retryError.message);
+          }
+        } else {
+          console.error("Failed to archive generation:", archiveError.message);
+        }
+      } else {
+        slugForClient = publicSlug;
       }
+
+      // --- 完成 (把扣减后的余额 + 分享 slug 一并返回,前端可即时刷新显示) ---
+      if (!PIPELINE_V2) await sendEvent("progress", STEPS.DONE);
+      await sendEvent("result", {
+        data: parsed,
+        creditsRemaining,
+        publicSlug: slugForClient,
+      });
     } catch (error: unknown) {
       const errMessage = error instanceof Error ? error.message : String(error);
       // Robust abort detection: our pipeline throws a named AbortError, but an SDK

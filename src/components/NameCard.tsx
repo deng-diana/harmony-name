@@ -15,6 +15,8 @@ interface NameCardProps {
   defaultSaved?: boolean;
   /** 落地页等未登录/纯展示场景:隐藏发音/分享/收藏等交互按钮(点击会依赖 auth/context 而报错)。 */
   readOnly?: boolean;
+  /** Per-result public share URL (/n/<slug>); forwarded to the share button. */
+  shareUrl?: string;
 }
 
 export function NameCard({
@@ -25,6 +27,7 @@ export function NameCard({
   archetype,
   defaultSaved,
   readOnly,
+  shareUrl,
 }: NameCardProps) {
   const cleanHanzi = name.hanzi.replace(/[{}]/g, "");
 
@@ -57,7 +60,11 @@ export function NameCard({
                 >
                   <Volume2 className="w-5 h-5" />
                 </button>
-                <ShareNameButton name={name} archetype={archetype} />
+                <ShareNameButton
+                  name={name}
+                  archetype={archetype}
+                  shareUrl={shareUrl}
+                />
                 <SaveNameButton name={name} initialSaved={defaultSaved} />
               </>
             )}

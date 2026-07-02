@@ -64,6 +64,10 @@ export default function Home() {
   const [phase, setPhase] = useState<"form" | "results">("form");
   const [baziResult, setBaziResult] = useState<BaziResult | null>(null);
   const [aiData, setAiData] = useState<ApiResponse | null>(null);
+  // Public share slug for THIS result (from the SSE result payload). Null until
+  // the server confirms the archive row exists (migration 013 run); when null,
+  // share falls back to the homepage URL.
+  const [shareSlug, setShareSlug] = useState<string | null>(null);
   const [isNamesLoading, setIsNamesLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Anonymous visitors hit a 401 from /api/generate — instead of navigating away
@@ -190,6 +194,7 @@ export default function Home() {
 
     setError(null);
     setAiData(null);
+    setShareSlug(null);
     setLoginRequired(false);
     setIsNamesLoading(true);
 
@@ -297,6 +302,9 @@ export default function Home() {
             } else if (parsed.type === "result") {
               track("generation_succeeded");
               setAiData(parsed.data);
+              setShareSlug(
+                typeof parsed.publicSlug === "string" ? parsed.publicSlug : null
+              );
             } else if (parsed.type === "error") {
               track("generation_failed");
               // 绝不向用户暴露内部报错细节(API key、堆栈等);失败已自动退款
@@ -336,6 +344,12 @@ export default function Home() {
     const metaString = `Born: ${birthDate} · Hour: ${metaTime} ${metaLocation} · ${
       gender === "male" ? "Male" : "Female"
     } ${metaSurname}`;
+
+    // Per-result public page URL when the server handed back a slug; else the
+    // ShareNameButton falls back to the homepage.
+    const shareUrl = shareSlug
+      ? `https://harmonyname.com/n/${shareSlug}`
+      : undefined;
 
     return (
       <div className="min-h-screen bg-paper py-12 px-4 sm:px-6 font-sans text-ink">
@@ -410,6 +424,7 @@ export default function Home() {
                     index={index}
                     playingNameIndex={playingNameIndex}
                     onPlayName={handlePlayName}
+                    shareUrl={shareUrl}
                     archetype={
                       ARCHETYPES[
                         baziResult.dayMaster as keyof typeof ARCHETYPES
@@ -433,6 +448,7 @@ export default function Home() {
                   archetype={
                     ARCHETYPES[baziResult.dayMaster as keyof typeof ARCHETYPES]
                   }
+                  shareUrl={shareUrl}
                   label="Share your name"
                 />
               </div>
@@ -450,6 +466,7 @@ export default function Home() {
                     setLoginRequired(false);
                     setPhase("form");
                     setAiData(null);
+                    setShareSlug(null);
                     window.scrollTo(0, 0);
                   }}
                   className="rounded-full text-ink-soft"
