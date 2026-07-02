@@ -5,6 +5,7 @@
  */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { track } from "@vercel/analytics";
 import { CREDIT_PACKS } from "@/lib/creditPacks";
 
 export function BuyPacks() {
@@ -13,6 +14,7 @@ export function BuyPacks() {
 
   const buy = async (packId: string) => {
     setBusy(packId);
+    track("checkout_started", { packId });
     try {
       const res = await fetch("/api/checkout", {
         method: "POST",

@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { track } from "@vercel/analytics";
 import {
   calculateBazi,
   SHICHEN_MAPPING,
@@ -119,6 +120,9 @@ export default function Home() {
     setAiData(null);
     setIsNamesLoading(true);
 
+    // Client-side validation passed — the birth form was submitted successfully.
+    track("form_completed");
+
     // Local BaZi calculation (with True Solar Time if city is selected)
     const city = selectedCity
       ? { longitude: selectedCity.longitude, timezone: selectedCity.timezone }
@@ -139,6 +143,7 @@ export default function Home() {
 
     try {
       setProgress({ step: 0, total: 4, message: "Connecting..." });
+      track("generation_started");
 
       const response = await fetch("/api/generate", {
         method: "POST",
@@ -161,6 +166,7 @@ export default function Home() {
       if (!response.ok || !response.body) {
         // 未登录 → 回登录页
         if (response.status === 401) {
+          track("login_wall_hit");
           router.push("/login");
           return;
         }
@@ -215,8 +221,10 @@ export default function Home() {
                 message: parsed.message,
               });
             } else if (parsed.type === "result") {
+              track("generation_succeeded");
               setAiData(parsed.data);
             } else if (parsed.type === "error") {
+              track("generation_failed");
               // 绝不向用户暴露内部报错细节(API key、堆栈等);失败已自动退款
               setError(
                 "The naming master couldn't finish this time — your credit has been refunded. Please try again."

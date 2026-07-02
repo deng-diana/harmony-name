@@ -428,10 +428,11 @@ export default function PrivacyPolicyPage() {
               </li>
             </ul>
             <p>
-              <strong>Analytics:</strong> 【CONFIRM: do you use any analytics
-              (for example, traffic measurement)? If yes, name the tool and note
-              that non-essential analytics cookies need consent. If no, state
-              that you do not use analytics cookies.】
+              <strong>Analytics:</strong> we use{" "}
+              <strong>Vercel Analytics</strong>, a cookieless, privacy-friendly
+              analytics service. It does not track you across other websites and
+              collects no personal identifiers. Our custom product events (for
+              example, when a name is generated) contain no birth data.
             </p>
           </Section>
 

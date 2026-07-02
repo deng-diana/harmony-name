@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 // 1. 引入 Google 的 Lora 字体
 import { Lora } from "next/font/google";
+import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 
 // 2. 配置 Lora
@@ -55,6 +56,7 @@ export default function RootLayout({
       {/* antialiased: 让字体边缘更平滑（抗锯齿），看起来更高级 */}
       <body className={`${lora.className} antialiased bg-[#FDFBF7] text-stone-900`}>
         {children}
+        <Analytics />
       </body>
     </html>
   );
