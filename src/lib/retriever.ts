@@ -58,7 +58,9 @@ export interface ScoredPoem {
 // 还包括:RPC 重定义(如 008 改 fame 权重 0.3→0.2)、fame_score 重灌、DB 侧前置过滤变更。
 // 否则旧权重/旧数据的条目会继续命中最长 30 天 → 缓存毒化。
 //   v2=chunkId 字段;v3=字库重建;v4=008 fame 权重 0.8/0.2(本次审计补 bump)。
-const CACHE_VERSION = "v4";
+//   v5=010(search_lines_by_chars 加 fame floor)+ 011(search_poem_chunks 权重回 0.7/0.3);
+//     010/011 于 2026-06-18 上线但未 bump(30 天缓存毒化窗口),2026-07-02 补 bump。
+const CACHE_VERSION = "v5";
 const poemCache = new Map<string, ScoredPoem[]>();
 const POEM_CACHE_MAX = 500;
 

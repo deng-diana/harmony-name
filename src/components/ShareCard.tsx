@@ -90,6 +90,7 @@ export function ShareNameButton({
           files: [file],
           title: `My Chinese name: ${cleanHanzi}`,
           text: `${cleanHanzi} (${name.pinyin}) — my authentic Chinese name ✦`,
+          url: "https://harmonyname.com",
         });
       } else {
         // 桌面端不支持分享文件 → 直接下载图片
@@ -161,7 +162,7 @@ export function ShareNameButton({
                 )}
                 <div className="w-10 h-px bg-stone-300 mb-3" />
                 <div className="text-[10px] uppercase tracking-[0.2em] text-stone-400">
-                  Discover your name · harmonyname.ai
+                  Discover your name · harmonyname.com
                 </div>
               </div>
             </div>
