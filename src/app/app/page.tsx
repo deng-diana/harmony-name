@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { track } from "@vercel/analytics";
 import {
   calculateBazi,
@@ -10,7 +11,7 @@ import {
   type BaziResult,
 } from "@/lib/bazi";
 import type { CommonSurname } from "@/lib/surnames";
-import type { ApiResponse } from "@/types";
+import type { ApiResponse, City } from "@/types";
 import {
   ArrowRight,
   RefreshCw,
@@ -24,7 +25,12 @@ import { NameCard } from "@/components/NameCard";
 import { CitySearch } from "@/components/CitySearch";
 import { SurnameSelector } from "@/components/SurnameSelector";
 import { GenerationProgress } from "@/components/GenerationProgress";
+import { ShareNameButton } from "@/components/ShareCard";
 import { Button } from "@/components/ui/Button";
+
+// sessionStorage key for form persistence across the login round-trip.
+// No PII concern — it never leaves the browser.
+const FORM_STORAGE_KEY = "hn_form_v1";
 
 export default function Home() {
   const router = useRouter();
@@ -41,6 +47,10 @@ export default function Home() {
     selectCity,
   } = useCitySearch();
 
+  // Gates the sessionStorage persist effect until after we've attempted to restore,
+  // so the empty initial state can't clobber a saved form on first mount.
+  const [hydrated, setHydrated] = useState(false);
+
   const [surnamePreference, setSurnamePreference] = useState<
     "any" | "common" | "specified"
   >("any");
@@ -56,7 +66,10 @@ export default function Home() {
   const [aiData, setAiData] = useState<ApiResponse | null>(null);
   const [isNamesLoading, setIsNamesLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [progress, setProgress] = useState({ step: 0, total: 4, message: "" });
+  // Anonymous visitors hit a 401 from /api/generate — instead of navigating away
+  // (which unmounts the DestinyCard and loses state), we show an inline sign-in panel.
+  const [loginRequired, setLoginRequired] = useState(false);
+  const [progress, setProgress] = useState({ step: 0, total: 5, message: "" });
 
   const { playingNameIndex, handlePlayName } = useTTS();
 
@@ -72,6 +85,65 @@ export default function Home() {
     },
     []
   );
+
+  // Restore the form once on mount so a login round-trip leaves inputs intact.
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem(FORM_STORAGE_KEY);
+      if (raw) {
+        const s = JSON.parse(raw);
+        if (typeof s.birthDate === "string") setBirthDate(s.birthDate);
+        if (typeof s.birthTime === "string") setBirthTime(s.birthTime);
+        if (s.gender === "male" || s.gender === "female") setGender(s.gender);
+        if (
+          s.surnamePreference === "any" ||
+          s.surnamePreference === "common" ||
+          s.surnamePreference === "specified"
+        )
+          setSurnamePreference(s.surnamePreference);
+        if (typeof s.surnameQuery === "string") setSurnameQuery(s.surnameQuery);
+        if (s.selectedSurname) setSelectedSurname(s.selectedSurname);
+        // selectCity also fills the city input text, so the field reads correctly.
+        if (s.selectedCity) selectCity(s.selectedCity as City);
+      }
+    } catch {
+      // Corrupt/absent storage → start fresh, no-op.
+    } finally {
+      setHydrated(true);
+    }
+    // Run exactly once; selectCity is a stable useCallback.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Persist the form on every change (only after restore, to avoid clobbering).
+  useEffect(() => {
+    if (!hydrated) return;
+    try {
+      sessionStorage.setItem(
+        FORM_STORAGE_KEY,
+        JSON.stringify({
+          birthDate,
+          birthTime,
+          gender,
+          surnamePreference,
+          surnameQuery,
+          selectedSurname,
+          selectedCity,
+        })
+      );
+    } catch {
+      // Storage full / disabled → silently skip; persistence is best-effort.
+    }
+  }, [
+    hydrated,
+    birthDate,
+    birthTime,
+    gender,
+    surnamePreference,
+    surnameQuery,
+    selectedSurname,
+    selectedCity,
+  ]);
 
   const handleCalculate = async () => {
     if (isNamesLoading) return; // 兜底:防重复提交(两条流 → 双扣积分 + 状态交错)
@@ -118,6 +190,7 @@ export default function Home() {
 
     setError(null);
     setAiData(null);
+    setLoginRequired(false);
     setIsNamesLoading(true);
 
     // Client-side validation passed — the birth form was submitted successfully.
@@ -142,7 +215,7 @@ export default function Home() {
     abortRef.current = ac;
 
     try {
-      setProgress({ step: 0, total: 4, message: "Connecting..." });
+      setProgress({ step: 0, total: 5, message: "Connecting..." });
       track("generation_started");
 
       const response = await fetch("/api/generate", {
@@ -164,10 +237,11 @@ export default function Home() {
       });
 
       if (!response.ok || !response.body) {
-        // 未登录 → 回登录页
+        // 未登录 → 不再跳走(会卸载 DestinyCard 丢失状态),改为在结果页内嵌登录卡。
         if (response.status === 401) {
           track("login_wall_hit");
-          router.push("/login");
+          setLoginRequired(true);
+          setIsNamesLoading(false);
           return;
         }
         // 触发限流 → 让用户稍等
@@ -305,6 +379,24 @@ export default function Home() {
               </div>
             )}
 
+            {/* Anonymous dead-end fix: inline sign-in card in place of the names,
+                keeping the DestinyCard + everything else visible. */}
+            {loginRequired && (
+              <div className="animate-fade-in-up text-center p-8 md:p-10 bg-paper-raised rounded-2xl border border-mist/70 shadow-soft">
+                <h3 className="text-xl md:text-2xl font-serif font-semibold text-ink mb-2">
+                  Sign in to reveal your three names
+                </h3>
+                <p className="text-ink-soft mb-6">
+                  Your first 3 generations are free.
+                </p>
+                <Link href="/login?next=/app">
+                  <Button size="lg" className="w-full sm:w-auto">
+                    Sign in to reveal <ArrowRight className="w-5 h-5" />
+                  </Button>
+                </Link>
+              </div>
+            )}
+
             <div className="grid gap-8">
               {aiData?.names?.map((name, index) => (
                 // 揭晓时刻:三个名字逐个"显形"(淡入+上浮+极轻放大),每张错峰 90ms。
@@ -328,6 +420,24 @@ export default function Home() {
               ))}
             </div>
 
+            {/* Post-reveal share moment — celebrate the top-ranked name once the
+                cards have revealed. Reuses the ShareCard modal machinery. */}
+            {!isNamesLoading && aiData?.names?.[0] && (
+              <div
+                className="animate-reveal flex flex-col items-center gap-3 pt-12"
+                style={{ animationDelay: `${aiData.names.length * 90 + 120}ms` }}
+              >
+                <p className="text-ink-soft font-serif text-lg">Share your name</p>
+                <ShareNameButton
+                  name={aiData.names[0]}
+                  archetype={
+                    ARCHETYPES[baziResult.dayMaster as keyof typeof ARCHETYPES]
+                  }
+                  label="Share your name"
+                />
+              </div>
+            )}
+
             {/* 仅在【非加载中】显示;加载时隐藏,免得和进度卡挤在一起显乱 */}
             {!isNamesLoading && (
               <div className="text-center pt-12 pb-8">
@@ -337,6 +447,7 @@ export default function Home() {
                     abortRef.current?.abort(); // 中止仍在跑的流,避免它稍后把名字写回已重置的表单
                     abortRef.current = null; // 置 null:让旧流的 finally 守卫失效,不再 refresh
                     setIsNamesLoading(false);
+                    setLoginRequired(false);
                     setPhase("form");
                     setAiData(null);
                     window.scrollTo(0, 0);

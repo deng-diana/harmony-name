@@ -22,9 +22,13 @@ interface Archetype {
 export function ShareNameButton({
   name,
   archetype,
+  label,
 }: {
   name: NameOption;
   archetype?: Archetype;
+  // When provided, render a labeled gold-accent button instead of the bare icon
+  // (used by the post-reveal share strip). The modal machinery is shared.
+  label?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -110,13 +114,22 @@ export function ShareNameButton({
 
   return (
     <>
-      <button
-        onClick={() => setOpen(true)}
-        aria-label="Share this name"
-        className="hover:text-stone-800 cursor-pointer transition-soft"
-      >
-        <Share2 className="w-5 h-5" />
-      </button>
+      {label ? (
+        <button
+          onClick={() => setOpen(true)}
+          className="inline-flex items-center gap-2 rounded-full border border-gold-soft bg-paper-raised px-6 py-3 text-sm font-semibold text-gold shadow-soft transition-soft hover:shadow-soft-lifted active:scale-[0.98]"
+        >
+          <Share2 className="w-4 h-4" /> {label}
+        </button>
+      ) : (
+        <button
+          onClick={() => setOpen(true)}
+          aria-label="Share this name"
+          className="hover:text-stone-800 cursor-pointer transition-soft"
+        >
+          <Share2 className="w-5 h-5" />
+        </button>
+      )}
 
       {open && (
         <div

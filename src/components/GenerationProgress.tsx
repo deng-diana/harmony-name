@@ -1,25 +1,43 @@
 /**
- * 生成进度指示器 — 实时显示 AI 取名的每一步
+ * Generation progress indicator — shows each step of the AI naming pipeline live.
  *
- * 接收来自 SSE stream 的 step/total/message,以 stepper + 进度条展示。
- * 设计:取名耗时可达数分钟,且步骤间隔长(进度百分比长时间不变),故在已完成的
- * 进度条上叠一层【流动微光】,让"等待"显得"活着"而非卡死;活动步骤柔和呼吸。
+ * Driven by the SSE stream's step/total/message. The stepper renders `totalSteps`
+ * dots dynamically so it always matches whatever the server emits (the v2 pipeline
+ * sends total = 5). Because steps can be long (the compose step alone can take ~45s),
+ * a time-based intra-step animation eases the bar toward the next boundary so it
+ * never looks frozen — it caps at the boundary until the real event arrives.
  */
 "use client";
 
-import { Loader2, CheckCircle2, BookOpen, Search, Sparkles, PartyPopper } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import {
+  Loader2,
+  CheckCircle2,
+  BookOpen,
+  Search,
+  Sparkles,
+  Scale,
+  PartyPopper,
+} from "lucide-react";
 import { cn } from "@/lib/cn";
 
-const STEP_CONFIG = [
-  { icon: BookOpen, label: "Analyzing Destiny" },
-  { icon: Search, label: "Searching Poems" },
-  { icon: Sparkles, label: "Crafting Names" },
-  { icon: PartyPopper, label: "Complete" },
+// v2 pipeline step map (1-indexed). Falls back to Sparkles/no-label if the server
+// ever emits more steps than we have metadata for.
+const STEP_META = [
+  { icon: BookOpen, label: "Reading your chart" },
+  { icon: Search, label: "Searching classical poems" },
+  { icon: Sparkles, label: "Composing names" },
+  { icon: Scale, label: "The review master judges" },
+  { icon: PartyPopper, label: "Revealing" },
 ];
 
+// Expected duration per step (ms) for the intra-step easing. The compose step
+// (step 3) is by far the slowest, so give it a much longer runway.
+const stepDurationMs = (step: number) => (step === 3 ? 45000 : 10000);
+
 interface GenerationProgressProps {
-  currentStep: number; // 1-4
-  totalSteps: number; // 4
+  currentStep: number; // 1..totalSteps (0 = connecting)
+  totalSteps: number; // from the SSE stream (5 for v2)
   message: string;
 }
 
@@ -28,15 +46,61 @@ export function GenerationProgress({
   totalSteps,
   message,
 }: GenerationProgressProps) {
-  const progressPercent = Math.round((currentStep / totalSteps) * 100);
-  const isDone = currentStep >= totalSteps;
+  const isDone = currentStep >= totalSteps && totalSteps > 0;
+
+  // Segment boundaries for the current step, as percentages of the full bar.
+  const segStart = (Math.max(currentStep - 1, 0) / totalSteps) * 100;
+  const segEnd = (Math.max(currentStep, 0) / totalSteps) * 100;
+
+  // Displayed fill %, eased over time toward the current step's boundary.
+  const [displayPercent, setDisplayPercent] = useState(segStart);
+  const rafRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    // All setState calls go through requestAnimationFrame callbacks (never
+    // synchronously in the effect body) to avoid cascading renders.
+    if (isDone) {
+      rafRef.current = requestAnimationFrame(() => setDisplayPercent(100));
+      return () => {
+        if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+      };
+    }
+    // Nothing to animate before the first real step arrives — snap to segment start.
+    if (currentStep < 1) {
+      rafRef.current = requestAnimationFrame(() => setDisplayPercent(segStart));
+      return () => {
+        if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+      };
+    }
+
+    const start = performance.now();
+    const duration = stepDurationMs(currentStep);
+
+    const tick = (now: number) => {
+      const t = Math.min((now - start) / duration, 1);
+      // ease-out cubic — quick at first, then crawls, so it never hits the cap early
+      const eased = 1 - Math.pow(1 - t, 3);
+      setDisplayPercent(segStart + (segEnd - segStart) * eased);
+      if (t < 1) {
+        rafRef.current = requestAnimationFrame(tick);
+      }
+    };
+    rafRef.current = requestAnimationFrame(tick);
+
+    return () => {
+      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+    };
+    // Re-run whenever the real step advances (new segment) or completion flips.
+  }, [currentStep, segStart, segEnd, isDone]);
+
+  const progressPercent = Math.round(displayPercent);
 
   return (
     <div className="py-12 px-8 bg-paper-raised rounded-2xl border border-mist/70 shadow-soft">
-      {/* 极细进度条(参考:克制);填充墨色 + ease-soft;未完成时叠微光显"活着" */}
+      {/* Thin progress bar; ink fill + ease-soft; shimmer overlay while running to feel alive */}
       <div className="relative w-full bg-mist rounded-full h-1 mb-10 overflow-hidden">
         <div
-          className="bg-ink h-full rounded-full transition-[width] duration-700 ease-soft"
+          className="bg-ink h-full rounded-full transition-[width] duration-300 ease-out"
           style={{ width: `${progressPercent}%` }}
         />
         {!isDone && (
@@ -44,13 +108,14 @@ export function GenerationProgress({
         )}
       </div>
 
-      {/* Stepper:完成=填充墨+对勾,进行中=描边墨,待办=淡(纯靠透明度区分,不喧哗) */}
+      {/* Stepper — driven by totalSteps so it always matches the server contract */}
       <div className="flex justify-between mb-10">
-        {STEP_CONFIG.map((step, index) => {
+        {Array.from({ length: totalSteps }).map((_, index) => {
           const stepNum = index + 1;
+          const meta = STEP_META[index];
+          const Icon = meta?.icon ?? Sparkles;
           const isCompleted = currentStep > stepNum;
           const isCurrent = currentStep === stepNum;
-          const Icon = step.icon;
 
           return (
             <div
@@ -76,15 +141,15 @@ export function GenerationProgress({
                   <Icon className={cn("w-4 h-4", isCurrent && "animate-pulse")} />
                 )}
               </div>
-              <span className="text-[10px] font-medium tracking-wider uppercase hidden sm:block text-ink">
-                {step.label}
+              <span className="text-[10px] font-medium tracking-wider uppercase hidden sm:block text-ink text-center max-w-[5.5rem] leading-tight">
+                {meta?.label ?? ""}
               </span>
             </div>
           );
         })}
       </div>
 
-      {/* 当前状态文字 —— 安静:小号转圈 + 省略号脉冲,不抢戏 */}
+      {/* Live status text — uses the server-sent message; quiet spinner + pulsing ellipsis */}
       <div className="text-center">
         {!isDone ? (
           <div className="flex items-center justify-center gap-2.5">
@@ -98,7 +163,7 @@ export function GenerationProgress({
           <p className="text-ink font-semibold">{message}</p>
         )}
         <p className="text-xs text-ink-faint mt-2 font-mono tracking-wide">
-          Step {currentStep} of {totalSteps}
+          Step {Math.max(currentStep, 0)} of {totalSteps}
         </p>
       </div>
     </div>
