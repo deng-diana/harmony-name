@@ -6,17 +6,24 @@
  * beautiful sourced name, and hits the CTA to make their own.
  *
  * DATA ACCESS — least privilege:
- *   We read with the ANON server client (RLS-bound), NOT the service-role admin.
- *   Migration 013 adds a policy allowing anon SELECT of rows WHERE is_public.
- *   We select ONLY safe columns — id, created_at, result, public_slug. We NEVER
- *   select or render the `input` column: it holds the bearer's birth data
- *   (date/time/place/gender). RLS is row-level and cannot hide that column, so
- *   NOT selecting it is the guard. Do not add `input` to the select below.
+ *   We read with a COOKIELESS, pure-anon Supabase client (no session), NOT the
+ *   cookie-bound server client and NOT the service-role admin. Why cookieless:
+ *   migration 013's public-read policy is scoped to the `anon` role ONLY. A
+ *   logged-in visitor using the cookie-bound client would run as `authenticated`
+ *   and could not see public rows (that policy intentionally excludes
+ *   authenticated to avoid leaking other users' birth data), so the page would
+ *   404 for them. Reading as pure anon makes every visitor take the same
+ *   column-restricted path.
+ *
+ *   Defense in depth: migration 013 also GRANTs anon SELECT on only the safe
+ *   columns (id, created_at, result, public_slug, is_public), so the database
+ *   itself rejects any read of `input` (birth data) or `user_id`. We STILL
+ *   select only safe columns here. Do not add `input`/`user_id` below.
  */
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@supabase/supabase-js";
 import type { ApiResponse, NameOption } from "@/types";
 import { NameCard } from "@/components/NameCard";
 import { Button } from "@/components/ui/Button";
@@ -31,11 +38,22 @@ type GenerationResult = {
   public_slug: string;
 };
 
+/** A cookieless, session-less anon client. It carries NO user identity, so the
+ * read always runs under the `anon` role — the only role migration 013 lets
+ * SELECT public rows, and the role whose column grants exclude birth data. */
+function anonClient() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    { auth: { persistSession: false, autoRefreshToken: false } }
+  );
+}
+
 /** Fetch a public generation by slug. Returns null if missing / not public. */
 async function getPublicGeneration(
   slug: string
 ): Promise<GenerationResult | null> {
-  const supabase = await createClient();
+  const supabase = anonClient();
   const { data, error } = await supabase
     .from("generations")
     // SAFE COLUMNS ONLY — never `input` (birth data). See file header.
