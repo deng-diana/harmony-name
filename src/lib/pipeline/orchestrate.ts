@@ -51,8 +51,20 @@ export interface PipelineResult {
 
 type ProgressFn = (step: number, total: number, message: string) => void;
 
+/**
+ * Narrative callback — a stream of TRUE, code-derived facts about the run
+ * ("grounded narrative streaming"). Unlike onProgress (which drives the stepper),
+ * this carries human-readable lines for the master's-journal UI. Everything it
+ * emits is already computed in scope (real elements, real pool citations, real
+ * counts) — no new LLM call, nothing the code can't verify. `at` is the step
+ * number the line belongs to, so the frontend can align it with the stepper.
+ */
+type NarrativeFn = (text: string, at: number) => void;
+
 export interface RunPipelineOptions {
   onProgress?: ProgressFn;
+  /** See NarrativeFn — grounded, verifiable narration for the journal UI. */
+  onNarrative?: NarrativeFn;
   /**
    * Client-disconnect signal. When aborted, in-flight LLM calls are cancelled and
    * the pipeline throws an AbortError between stages so we stop paying for a result
@@ -112,6 +124,7 @@ export async function runNamingPipeline(
   opts: RunPipelineOptions = {}
 ): Promise<PipelineResult> {
   const onProgress = opts.onProgress ?? (() => {});
+  const onNarrative = opts.onNarrative ?? (() => {});
   const { signal } = opts;
   throwIfAborted(signal);
 
@@ -124,6 +137,15 @@ export async function runNamingPipeline(
   // ① 候选字 + 候选池
   onProgress(1, TOTAL, "Searching real classical lines…");
   const candidateChars = candidateCharsFor(input.favourableElements, input.gender);
+  // Grounded narration: the real favourable elements we're about to search for.
+  if (input.favourableElements.length > 0) {
+    onNarrative(
+      `Your favourable elements: ${input.favourableElements.join(
+        ", "
+      )} — searching for characters that carry them`,
+      1
+    );
+  }
   const imageryQuery =
     "中国古典诗词 " +
     input.favourableElements.map((e) => ELEMENT_IMAGERY[e] || e).join(" ");
@@ -133,6 +155,19 @@ export async function runNamingPipeline(
   });
   if (pool.length === 0) return { names: [] }; // 调用方据此退款
   throwIfAborted(signal);
+
+  // Grounded narration: how many real verified lines we found + up to 4 distinct
+  // poems (famous first), cited as author《title》. These are real DB rows.
+  const { poems: citedPoems, hasMore } = topDistinctPoems(pool, 4);
+  if (citedPoems.length > 0) {
+    const citation = citedPoems.map((p) => `${p.author}《${p.title}》`).join(", ");
+    onNarrative(
+      `Reading ${pool.length} verified line${pool.length === 1 ? "" : "s"} — ${citation}${
+        hasMore ? "…" : ""
+      }`,
+      1
+    );
+  }
 
   const profile: ComposerProfile = {
     gender: input.gender,
@@ -157,6 +192,15 @@ export async function runNamingPipeline(
   onProgress(2, TOTAL, "The naming master is composing…");
   const first = await safeComposer(profile, pool, undefined, opts);
   let analysis = first.analysis;
+  // Grounded narration: how many candidates the master actually returned.
+  if (first.candidates.length > 0) {
+    onNarrative(
+      `The master proposed ${first.candidates.length} candidate name${
+        first.candidates.length === 1 ? "" : "s"
+      }`,
+      2
+    );
+  }
   throwIfAborted(signal);
 
   // ③ 校验;只有 0 个通过时才带反馈重生成一轮(evaluator-optimizer lightweight retry).
@@ -164,8 +208,17 @@ export async function runNamingPipeline(
   onProgress(3, TOTAL, "Verifying authenticity…");
   let verified = passing(first.candidates, ctx);
   round1Verified = verified.length;
+  // Grounded narration: the real survival count against the original poems.
+  if (round1Verified >= 1) {
+    onNarrative(
+      `${round1Verified} of ${first.candidates.length} survived authenticity checks against the original poems`,
+      3
+    );
+  }
 
   if (verified.length < 1) {
+    // Narrate the revision round: none survived, so the master retries with feedback.
+    onNarrative("None survived — the master revises with the failure feedback", 3);
     composerCalls++;
     const failed = first.candidates
       .map((c) => ({ c, r: verifyCandidate(c, ctx) }))
@@ -179,6 +232,14 @@ export async function runNamingPipeline(
     const retry = await safeComposer(profile, pool, failed, opts);
     if (!analysis) analysis = retry.analysis;
     verified = dedupe([...verified, ...passing(retry.candidates, ctx)], ctx);
+    if (verified.length > 0) {
+      onNarrative(
+        `${verified.length} name${
+          verified.length === 1 ? "" : "s"
+        } survived after the revision`,
+        3
+      );
+    }
     throwIfAborted(signal);
   }
 
@@ -216,6 +277,18 @@ export async function runNamingPipeline(
     try {
       const rankings = await runCritic(profile, verified, pool, signal);
       if (rankings.length > 0) {
+        // Grounded narration: the real top score the review master assigned.
+        const validScores = rankings
+          .map((r) => r.score)
+          .filter((s) => Number.isFinite(s));
+        if (validScores.length > 0) {
+          onNarrative(
+            `The review master scored them — top mark ${Math.max(
+              ...validScores
+            )}/100`,
+            4
+          );
+        }
         // byIdx 保护:LLM 偶尔会返回:
         //   ① 重复 idx —— Map 会 last-write-wins,旧实现静默覆盖 score(可能丢真分);
         //   ② 越界 idx(>= verified.length) 或 NaN —— Map.get 返回 undefined,排序为 0;
@@ -272,6 +345,15 @@ export async function runNamingPipeline(
 
   // ⑥ 回填出处 + 五行/拼音 → NameOption(出处一律来自候选池,非 LLM 文本)
   onProgress(5, TOTAL, "Revealing your names…");
+  // Grounded narration: the real number of final names, picked from distinct poems.
+  if (picked.length === 1) {
+    onNarrative("Selecting the final name", 5);
+  } else {
+    onNarrative(
+      `Selecting the final ${picked.length === 2 ? "two" : "three"} from distinct poems`,
+      5
+    );
+  }
   const names = picked.map((c) => hydrate(c, pool));
 
   console.log(
@@ -286,6 +368,27 @@ export async function runNamingPipeline(
   );
 
   return { names, analysis };
+}
+
+/**
+ * Up to `n` DISTINCT poems from the pool for grounded narration, famous first.
+ * Deduped by title+author so the journal cites distinct works, not repeated lines
+ * from one poem. `hasMore` tells the caller whether to append an ellipsis. Pure,
+ * fact-only — every field comes from a real DB row (ScoredPoem).
+ */
+function topDistinctPoems(
+  pool: ScoredPoem[],
+  n: number
+): { poems: ScoredPoem[]; hasMore: boolean } {
+  const seen = new Set<string>();
+  const distinct: ScoredPoem[] = [];
+  for (const p of [...pool].sort((a, b) => b.fameScore - a.fameScore)) {
+    const key = `${p.title}|${p.author}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    distinct.push(p);
+  }
+  return { poems: distinct.slice(0, n), hasMore: distinct.length > n };
 }
 
 function passing(

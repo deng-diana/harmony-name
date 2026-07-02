@@ -74,6 +74,9 @@ export default function Home() {
   // (which unmounts the DestinyCard and loses state), we show an inline sign-in panel.
   const [loginRequired, setLoginRequired] = useState(false);
   const [progress, setProgress] = useState({ step: 0, total: 5, message: "" });
+  // Grounded narrative lines (SSE `narrative` events) — the naming process telling
+  // its true story live. Accumulated in order, reset on each new generation.
+  const [narrativeLines, setNarrativeLines] = useState<string[]>([]);
 
   const { playingNameIndex, handlePlayName } = useTTS();
 
@@ -195,6 +198,7 @@ export default function Home() {
     setError(null);
     setAiData(null);
     setShareSlug(null);
+    setNarrativeLines([]);
     setLoginRequired(false);
     setIsNamesLoading(true);
 
@@ -299,6 +303,10 @@ export default function Home() {
                 total: parsed.total,
                 message: parsed.message,
               });
+            } else if (parsed.type === "narrative") {
+              if (typeof parsed.text === "string") {
+                setNarrativeLines((prev) => [...prev, parsed.text]);
+              }
             } else if (parsed.type === "result") {
               track("generation_succeeded");
               setAiData(parsed.data);
@@ -384,6 +392,7 @@ export default function Home() {
                 currentStep={progress.step}
                 totalSteps={progress.total}
                 message={progress.message}
+                narrative={narrativeLines}
               />
             )}
 
@@ -467,6 +476,7 @@ export default function Home() {
                     setPhase("form");
                     setAiData(null);
                     setShareSlug(null);
+                    setNarrativeLines([]);
                     window.scrollTo(0, 0);
                   }}
                   className="rounded-full text-ink-soft"

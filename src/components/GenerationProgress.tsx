@@ -39,12 +39,33 @@ interface GenerationProgressProps {
   currentStep: number; // 1..totalSteps (0 = connecting)
   totalSteps: number; // from the SSE stream (5 for v2)
   message: string;
+  /**
+   * Grounded narrative lines (SSE `narrative` events) — true, code-derived facts
+   * about the run, appended live as a master's-journal. Empty on the legacy path.
+   */
+  narrative?: string[];
+}
+
+// Wrap runs of Chinese characters (poem titles/authors/names, incl. 《》 brackets)
+// in a serif span tagged lang="zh-Hans" so they render with the right font/shaping;
+// English prose stays in the default sans face.
+function renderNarrativeLine(text: string) {
+  return text.split(/([㐀-鿿《》]+)/g).map((part, i) =>
+    /[㐀-鿿《》]/.test(part) ? (
+      <span key={i} lang="zh-Hans" className="font-serif">
+        {part}
+      </span>
+    ) : (
+      <span key={i}>{part}</span>
+    )
+  );
 }
 
 export function GenerationProgress({
   currentStep,
   totalSteps,
   message,
+  narrative = [],
 }: GenerationProgressProps) {
   const isDone = currentStep >= totalSteps && totalSteps > 0;
 
@@ -55,6 +76,13 @@ export function GenerationProgress({
   // Displayed fill %, eased over time toward the current step's boundary.
   const [displayPercent, setDisplayPercent] = useState(segStart);
   const rafRef = useRef<number | null>(null);
+
+  // Keep the journal pinned to the bottom as new lines append.
+  const journalRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = journalRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [narrative]);
 
   useEffect(() => {
     // All setState calls go through requestAnimationFrame callbacks (never
@@ -166,6 +194,27 @@ export function GenerationProgress({
           Step {Math.max(currentStep, 0)} of {totalSteps}
         </p>
       </div>
+
+      {/* Master's journal — grounded, verifiable facts append here as the run
+          progresses. Scrolls, pinned to the newest line. aria-live so screen
+          readers announce each new entry. */}
+      {narrative.length > 0 && (
+        <div
+          ref={journalRef}
+          role="status"
+          aria-live="polite"
+          className="mt-8 max-h-40 overflow-y-auto border-t border-mist/60 pt-5 text-left space-y-2"
+        >
+          {narrative.map((line, i) => (
+            <p
+              key={i}
+              className="animate-fade-in text-xs leading-relaxed text-ink-soft/80"
+            >
+              {renderNarrativeLine(line)}
+            </p>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

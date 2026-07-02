@@ -239,6 +239,13 @@ export async function POST(request: Request) {
               // fire-and-forget;sendEvent 已吞掉写失败,不会变成 unhandledRejection。
               void sendEvent("progress", { step, total, message });
             },
+            // Grounded narrative stream: true, code-derived facts about the run,
+            // rendered as the master's-journal under the progress bar. Separate
+            // event type keeps the stepper contract untouched (legacy path emits
+            // none of these). fire-and-forget, same swallow-on-disconnect guard.
+            onNarrative: (text, at) => {
+              void sendEvent("narrative", { text, at });
+            },
             // Cancel in-flight LLM calls when the client disconnects (stop paying).
             signal: request.signal,
             // Escalate SILENT LLM degradations (swallowed Composer/Critic API errors)
