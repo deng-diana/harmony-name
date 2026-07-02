@@ -4,6 +4,7 @@
  * 充值包卡片 (Phase 7) —— 点 Buy → 调 /api/checkout → 跳转到 Stripe 支付页。
  */
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { track } from "@vercel/analytics";
 import { CREDIT_PACKS } from "@/lib/creditPacks";
@@ -37,8 +38,9 @@ export function BuyPacks() {
   };
 
   return (
-    <div className="grid sm:grid-cols-3 gap-6">
-      {CREDIT_PACKS.map((p) => (
+    <>
+      <div className="grid sm:grid-cols-3 gap-6">
+        {CREDIT_PACKS.map((p) => (
         <div
           key={p.id}
           className="bg-white rounded-2xl border border-stone-200 p-6 flex flex-col items-center text-center hover:shadow-lg transition"
@@ -61,7 +63,19 @@ export function BuyPacks() {
             {busy === p.id ? "Redirecting…" : "Buy"}
           </button>
         </div>
-      ))}
-    </div>
+        ))}
+      </div>
+      <p className="text-center text-xs text-stone-400 mt-6">
+        By purchasing you agree to our{" "}
+        <Link href="/terms" className="underline hover:text-stone-600">
+          Terms
+        </Link>{" "}
+        and{" "}
+        <Link href="/refund" className="underline hover:text-stone-600">
+          Refund Policy
+        </Link>
+        .
+      </p>
+    </>
   );
 }
