@@ -43,11 +43,14 @@ export function getNamingProvider(): "anthropic" | "deepseek" {
 /**
  * Resolves the model identifier for the current provider:
  *   anthropic → NAMING_MODEL constant (from model.ts, env-overridable at startup)
- *   deepseek  → NAMING_MODEL_DEEPSEEK env var, or "deepseek-v4-flash" default
+ *   deepseek  → NAMING_MODEL_DEEPSEEK env var, or "deepseek-chat" default
  */
 export function resolveNamingModel(): string {
   if (getNamingProvider() === "deepseek") {
-    return process.env.NAMING_MODEL_DEEPSEEK || "deepseek-v4-flash";
+    // deepseek-chat is the only usable default: v4-flash/v4-pro are reasoning
+    // models that spend the whole max_tokens budget on chain-of-thought and
+    // return empty content for this strict JSON task (verified 2026-07-02).
+    return process.env.NAMING_MODEL_DEEPSEEK || "deepseek-chat";
   }
   return NAMING_MODEL;
 }
