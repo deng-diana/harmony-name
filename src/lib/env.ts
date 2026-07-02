@@ -25,9 +25,17 @@ export function validateServerEnv(): void {
     const bad = result.error.issues
       .map((i) => i.path.join("."))
       .join(", ");
-    console.error(
+    const message =
       `[env] Missing or invalid required environment variables: ${bad}. ` +
-        `Check .env.local (and Vercel project env vars in production).`
-    );
+      `Check .env.local (and Vercel project env vars in production).`;
+    // Called once at server boot from instrumentation.ts (nodejs runtime), so a
+    // throw here fails the server startup — NOT a user request. In production a
+    // missing required var must be a hard stop (better to fail to boot than to
+    // serve a half-configured app that 500s mysteriously at runtime). In dev we
+    // only log, so you can iterate without every var set.
+    if (process.env.VERCEL_ENV === "production") {
+      throw new Error(message);
+    }
+    console.error(message);
   }
 }

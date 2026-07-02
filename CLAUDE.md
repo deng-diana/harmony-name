@@ -27,13 +27,22 @@ Tests live next to source: `src/lib/bazi.test.ts`, `src/lib/namechars.test.ts`, 
 
 ### Data pipeline (poetry vector DB) — run in order
 
+> ⚠️ **`scripts/seed-supabase.ts` is DESTRUCTIVE.** It DELETEs every row in `poems` + `poem_chunks` on whatever DB `.env.local` points at, then re-inserts. It refuses to run without `--force`, prints the target host, and prompts for `yes` on stdin (skip the prompt with `--yes`). **Always back up first: `npm run backup:corpus`.** On any mid-run embedding/insert error it exits non-zero with a "CORPUS MAY BE PARTIAL" warning instead of a success message.
+
+Full rebuild order:
+
 ```bash
 git clone --depth 1 https://github.com/chinese-poetry/chinese-poetry.git /tmp/chinese-poetry
-python3 scripts/process-poems.py     # needs `opencc`; writes scripts/poem-chunks.json
-npx tsx scripts/seed-supabase.ts     # embeds chunks (OpenAI) + inserts into Supabase
+python3 scripts/process-poems.py            # needs `opencc`; writes scripts/poem-chunks.json
+npm run backup:corpus                       # snapshot current corpus BEFORE the wipe
+npx tsx scripts/seed-supabase.ts --force    # WIPES + re-embeds (OpenAI) + re-inserts; prompts for "yes"
+npx tsx scripts/enrich-corpus.ts            # re-add curated feminine/rare-char lines (idempotent)
+npx tsx scripts/cleanup-corpus.ts --apply   # re-apply negative-imagery deletions + title fixes
 ```
 
-Database schema lives in `supabase/migrations/001_create_poems_tables.sql`, then **`scripts/add-fame-score.sql` (run manually in the Supabase SQL editor)** which adds the `fame_score` column and *redefines* the `search_poem_chunks` RPC. The add-fame-score version is the one the app actually calls — it takes `query_embedding` as **text** (a JSON-stringified vector), returns `source` + `fame_score`, and ranks by `0.7 * cosine_similarity + 0.3 * (fame_score/3)`. The function signature in migration 001 is superseded.
+`fame_score` is now derived AT INSERT TIME inside `seed-supabase.ts` (ported from `scripts/add-fame-score.sql`'s source/author lists), so a reseed no longer resets every row to the DEFAULT `1` — the by-chars retrieval arm (migration 010 needs `fame_score >= 2`) survives without re-running the SQL. `scripts/add-fame-score.sql` is still the source of the `fame_score` COLUMN + the `search_poem_chunks` RPC redefinition; run it once in the Supabase SQL editor when standing up a fresh database. The RPC there is the one the app actually calls — it takes `query_embedding` as **text** (a JSON-stringified vector), returns `source` + `fame_score`, and ranks by `0.7 * cosine_similarity + 0.3 * (fame_score/3)`. The function signature in migration 001 is superseded.
+
+**Backup command:** `npm run backup:corpus` (→ `scripts/backup-corpus.ts`) exports `poems` + `poem_chunks` (all columns EXCEPT the embedding vector) as two timestamped `.json.gz` files under the gitignored `backups/` dir, paginating past PostgREST's 1000-row page limit. Print includes row counts + file sizes.
 
 **Required for v2 multi-agent pipeline** — run these in the Supabase SQL editor too:
 - `supabase/migrations/005_search_poem_chunks_add_chunk_id.sql` — re-creates the RPC so it also returns `chunk_id` (lineId). The v2 composer references lines by id; without this column the pipeline cannot hydrate citations.

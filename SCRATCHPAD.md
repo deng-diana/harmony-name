@@ -7,6 +7,72 @@
 
 ---
 
+## 2026-07-02 — overnight audit + 8-batch fix session (PR #17, awaiting merge) 🟡 ON BRANCH
+
+A 7-agent audit (architecture / performance / security / stack / product / agentic / gap-check)
+produced 45 issues + 34 opportunities with file:line evidence. Then an overnight builder+checker
+loop fixed the top findings in 8 batches, all on `fix/batch-a-quick-wins` → **PR #17** (12 commits,
+97/97 tests, tsc+lint clean throughout). Key audit verdicts: stack is current (no framework churn
+needed; NO LangGraph — the hand-rolled orchestrator is sound); the real gaps were growth plumbing,
+latency shape, and edge-case money paths.
+
+**Batches landed (each = one commit):**
+- **A quick wins**: CACHE_VERSION v4→v5 (migrations 010/011 were being bypassed by 30-day stale
+  Redis entries — the audit's most urgent find); OG image 404 fix; ShareCard domain `.ai`→`.com`
+  + share URLs; node-fetch removed, dotenv→dev; `src/app/sitemap.ts` replacing a sitemap that
+  advertised two 404 routes; dead webmanifest deleted.
+- **B analytics**: @vercel/analytics + 6 funnel events (form_completed, login_wall_hit,
+  generation_started/succeeded/failed, checkout_started). Product had ZERO analytics.
+- **C money/security** (adversarial-reviewed, 1 blocker caught & fixed): no refund on
+  post-success disconnect (was a free-generation loophole); sendEvent never throws + IIFE
+  .catch → Sentry; SSE keepalive every 15s; AbortSignal threaded through the whole pipeline
+  (client disconnect stops paid LLM work); Sentry on silent composer/critic/refund failures;
+  **migration 012** `process_stripe_credit` — atomic webhook dedupe+grant (closes a
+  concurrent-retry race that could permanently lose a paying customer's credits; reviewer
+  caught the zero-row-UPDATE hole → PROFILE_NOT_FOUND rollback); checkout: origin pinned,
+  zod body validation, terms notice via Stripe custom_text, checkout rate limit; /api/generate
+  fail-closed limiter + IP-keyed second limiter (x-real-ip / last XFF hop); heartbeat
+  fail-closed in prod; env validation throws in prod at boot.
+- **D legal**: all user-visible 【CONFIRM】 placeholders resolved (sole-trader wording pending
+  real legal name), ages aligned to 18, refund/consent text wired to the checkout notice,
+  Terms/Refund links on the buy page.
+- **E activation**: 401 no longer hard-redirects — inline sign-in panel, DestinyCard stays;
+  form persists via sessionStorage across the login round-trip (login honors ?next=);
+  progress UI rebuilt for the v2 5-step contract with eased intra-step fill (bar never
+  freezes at 40%); ElementCompatibility remounted (collapsible, was dead code); post-reveal
+  labeled share moment.
+- **F corpus safety**: seed-supabase requires --force + typed "yes" + prints target host;
+  errors now fail loud (no false 🎉); fame_score derived AT INSERT (reseed no longer nukes
+  the 010 fame floor); `npm run backup:corpus` script + real backup taken (3,507 poems /
+  11,593 chunks); CLAUDE.md rebuild runbook.
+- **G DeepSeek root cause SOLVED**: v4-flash/v4-pro are reasoning models — they burn the
+  entire max_tokens on chain-of-thought and return EMPTY content (measured: 8192/8192
+  reasoning tokens, content len 0). `deepseek-chat` works: eval 8 fixtures — citation 100%,
+  element 100%, ~18s/gen vs ~108s, ~30x cheaper, name taste comparable (松月/星河/月露/烟柳).
+  Adapter now fails loud (finish_reason + usage in error), falls back to reasoning_content,
+  logs `[llm-usage]` for both providers; default DeepSeek model pinned to deepseek-chat.
+  Provider default UNCHANGED (Anthropic) — flip is a 3-env-var op documented in the PR.
+- **H public result pages**: migration 013 (public_slug + is_public on generations),
+  `/n/[slug]` server page (NameCard readOnly + CTA), dynamic OG image via next/og,
+  share buttons use the per-result URL. Privacy hole caught in review: RLS is row-level,
+  so anon column grants now block `input` (birth data) + `user_id` at the DB level;
+  public policy is anon-only; page reads via cookieless anon client.
+- **Narrative streaming** (Phase 2 #1): new `narrative` SSE events emit code-derived TRUE
+  facts during the wait (pool poems, verify counts, critic top score) rendered as a
+  master's-journal with lang="zh-Hans" + aria-live. Zero added LLM cost/latency.
+
+**⚠️ Requires manual runs in Supabase SQL editor (graceful fallbacks until then):**
+migrations **012** (atomic stripe credit) + **013** (public slugs). Until 013 runs, share
+links quietly fall back to the homepage; until 012 runs, the webhook uses the legacy path
+and logs a Sentry warning.
+
+**Deferred to next sessions:** skeleton-then-elaborate composer split (~69s→~25s on
+Anthropic; less urgent if DeepSeek flips); user-facing refine loop; "Ask the Master" chat;
+remote MCP; programmatic SEO page families; i18n; a11y pass on the form (audit has the
+full list); eval-harness-in-CI; ci-dedup corpus fix (2-3x corpus for free).
+
+---
+
 ## 2026-06-30 — naming pipeline: fix slow / 2-char / same-surname + DeepSeek eval 🟢 LIVE
 
 A real foreign-user test exposed 3 symptoms: generation hung ~3 min, names were 2-char

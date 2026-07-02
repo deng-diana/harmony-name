@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "vitest run"
+    "test": "vitest run",
+    "backup:corpus": "npx tsx scripts/backup-corpus.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",
@@ -17,13 +18,12 @@
     "@supabase/supabase-js": "^2.100.0",
     "@upstash/ratelimit": "^2.0.8",
     "@upstash/redis": "^1.38.0",
+    "@vercel/analytics": "^2.0.1",
     "clsx": "^2.1.1",
-    "dotenv": "^17.2.3",
     "html-to-image": "^1.11.13",
     "lucide-react": "^0.554.0",
     "lunar-javascript": "^1.7.7",
     "next": "^16.2.6",
-    "node-fetch": "^3.3.2",
     "openai": "^6.9.1",
     "pinyin-pro": "^3.28.1",
     "react": "19.2.0",
@@ -37,6 +37,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "dotenv": "^17.2.3",
     "eslint": "^9",
     "eslint-config-next": "^16.2.6",
     "tailwindcss": "^4",

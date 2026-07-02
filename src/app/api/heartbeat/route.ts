@@ -23,6 +23,11 @@ export async function GET(request: Request) {
     if (auth !== `Bearer ${secret}`) {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
+  } else if (process.env.VERCEL_ENV === "production") {
+    // Fail closed in prod: CRON_SECRET IS set there, so a missing secret means
+    // misconfiguration — reject rather than expose an unauthenticated DB touch.
+    // Local dev (no VERCEL_ENV) stays permissive so it works on your machine.
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   // 2) The heartbeat itself: read a single id from the poems table.

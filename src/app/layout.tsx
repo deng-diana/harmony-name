@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 // 1. 引入 Google 的 Lora 字体
 import { Lora } from "next/font/google";
+import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 
 // 2. 配置 Lora
@@ -33,14 +34,13 @@ export const metadata: Metadata = {
     title: "HarmonyName — A Chinese name with a real source",
     description: SITE_DESCRIPTION,
     url: "/",
-    // TODO(P3): 用真实名字卡渲染一张 1200×630 OG 图,放在 /public/og.png
-    images: [{ url: "/og.png", width: 1200, height: 630, alt: "HarmonyName" }],
+    images: [{ url: "/og-image.png", width: 1200, height: 630, alt: "HarmonyName" }],
   },
   twitter: {
     card: "summary_large_image",
     title: "HarmonyName — A Chinese name with a real source",
     description: SITE_DESCRIPTION,
-    images: ["/og.png"],
+    images: ["/og-image.png"],
   },
 };
 
@@ -56,6 +56,7 @@ export default function RootLayout({
       {/* antialiased: 让字体边缘更平滑（抗锯齿），看起来更高级 */}
       <body className={`${lora.className} antialiased bg-[#FDFBF7] text-stone-900`}>
         {children}
+        <Analytics />
       </body>
     </html>
   );

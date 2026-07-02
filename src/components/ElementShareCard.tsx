@@ -69,7 +69,7 @@ export function ShareElementButton({
       }
       const file = new File([blob], "my-element.png", { type: "image/png" });
       if (typeof navigator !== "undefined" && navigator.canShare?.({ files: [file] })) {
-        await navigator.share({ files: [file], text: shareText });
+        await navigator.share({ files: [file], text: shareText, url: "https://harmonyname.com" });
       } else {
         download(blob);
       }

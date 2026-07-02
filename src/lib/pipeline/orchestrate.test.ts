@@ -213,3 +213,61 @@ describe("runNamingPipeline — deterministic rescue on zero verified", () => {
     expect(vi.mocked(runCritic)).not.toHaveBeenCalled();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Suite 5: grounded narrative streaming — onNarrative carries REAL pool facts
+// ---------------------------------------------------------------------------
+
+describe("runNamingPipeline — grounded narrative", () => {
+  it("emits narrative lines carrying real pool facts (elements, poem citations, counts)", async () => {
+    // Real, distinct poems so the citation line quotes true titles/authors.
+    const pool: ScoredPoem[] = [
+      { ...poem(1, "清昊"), title: "山居秋暝", author: "王维", fameScore: 3 },
+      { ...poem(2, "昊清"), title: "阁夜", author: "杜甫", fameScore: 3 },
+    ];
+    vi.mocked(buildVerifiedPool).mockResolvedValue(pool);
+    vi.mocked(runComposer).mockResolvedValue({
+      analysis: "Weak Water chart — favour Water and Fire.",
+      candidates: [CAND_1, CAND_2],
+    });
+
+    const narratives: { text: string; at: number }[] = [];
+    const result = await runNamingPipeline(baseInput, {
+      onNarrative: (text, at) => narratives.push({ text, at }),
+    });
+
+    expect(result.names).toHaveLength(2);
+    const all = narratives.map((n) => n.text).join("\n");
+
+    // ① real favourable elements
+    expect(all).toMatch(/favourable elements:.*Water.*Fire/);
+    // ② real pool size + real cited poem title/author
+    expect(all).toContain("Reading 2 verified lines");
+    expect(all).toContain("山居秋暝");
+    expect(all).toContain("王维");
+    // ③ real composer candidate count
+    expect(all).toContain("2 candidate names");
+    // ④ real survival count against the original poems
+    expect(all).toMatch(/2 of 2 survived/);
+    // every narrative line is tagged with the step it belongs to (1..5)
+    expect(narratives.every((n) => n.at >= 1 && n.at <= 5)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Suite 4: abort propagation (client disconnect)
+// ---------------------------------------------------------------------------
+
+describe("runNamingPipeline — abort propagation", () => {
+  it("throws a named AbortError when the signal is already aborted", async () => {
+    vi.mocked(buildVerifiedPool).mockResolvedValue(TEST_POOL);
+    vi.mocked(runComposer).mockResolvedValue({ analysis: "", candidates: [CAND_1] });
+
+    const controller = new AbortController();
+    controller.abort(); // client already gone before we start
+
+    await expect(
+      runNamingPipeline(baseInput, { signal: controller.signal })
+    ).rejects.toThrow(/aborted/i);
+  });
+});

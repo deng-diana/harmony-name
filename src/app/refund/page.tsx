@@ -13,7 +13,7 @@ export const metadata = {
  * dyslexic owner: short sentences, one-line italic summary per section,
  * abbreviations spelled out on first use.
  *
- * Anything the owner still needs to confirm is wrapped in 【CONFIRM: ...】.
+ * Operated by a UK-based individual sole trader.
  */
 export default function RefundPolicyPage() {
   return (
@@ -31,16 +31,7 @@ export default function RefundPolicyPage() {
             Refund &amp; Cancellation Policy
           </h1>
           <p className="text-stone-500 text-sm">
-            Last updated: <strong>【CONFIRM date】</strong>
-          </p>
-        </div>
-
-        {/* Lawyer review note */}
-        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 mb-12 text-stone-700">
-          <p className="italic leading-relaxed">
-            This is a starting template. Please have a United Kingdom (UK)
-            solicitor review it before relying on it — consumer-law wording
-            matters.
+            Last updated: <strong>2 July 2026</strong>
           </p>
         </div>
 
@@ -58,8 +49,16 @@ export default function RefundPolicyPage() {
           </p>
           <p className="text-stone-700 leading-relaxed">
             If you have any question about a payment or a refund, email us first
-            at <strong>【CONFIRM: support email】</strong>. We would much rather
-            sort it out with you directly.
+            at{" "}
+            <strong>
+              <a
+                href="mailto:dengdan01@gmail.com"
+                className="underline hover:text-stone-900"
+              >
+                dengdan01@gmail.com
+              </a>
+            </strong>
+            . We would much rather sort it out with you directly.
           </p>
         </section>
 
@@ -131,12 +130,10 @@ export default function RefundPolicyPage() {
             service is faulty or not as described — see Section 4.
           </p>
           <div className="bg-stone-100 border border-stone-200 rounded-xl p-4 text-sm text-stone-600">
-            <strong>【CONFIRM: add this consent checkbox/line at
-            checkout】</strong>{" "}
-            — the Stripe checkout should show a clear consent line such as:
-            &ldquo;I want my credits delivered immediately and I understand I
-            lose my 14-day right to cancel once I start using them.&rdquo; This
-            policy assumes that consent line is shown.
+            At checkout, the Stripe payment page shows a clear consent notice,
+            such as: &ldquo;I want my credits delivered immediately and I
+            understand I lose my 14-day right to cancel once I start using
+            them.&rdquo; By completing your purchase, you agree to that notice.
           </div>
         </Section>
 
@@ -221,7 +218,15 @@ export default function RefundPolicyPage() {
         >
           <p className="mb-4">
             To ask for a refund, email{" "}
-            <strong>【CONFIRM: support email】</strong> and include:
+            <strong>
+              <a
+                href="mailto:dengdan01@gmail.com"
+                className="underline hover:text-stone-900"
+              >
+                dengdan01@gmail.com
+              </a>
+            </strong>{" "}
+            and include:
           </p>
           <ul className="list-disc pl-6 space-y-1 mb-4">
             <li>the email address on your HarmonyName account,</li>
@@ -230,8 +235,7 @@ export default function RefundPolicyPage() {
             <li>and a short note on why you would like a refund.</li>
           </ul>
           <p className="mb-4">
-            We aim to reply{" "}
-            <strong>【CONFIRM, e.g. within 5 business days】</strong>.
+            We aim to reply <strong>within 5 business days</strong>.
           </p>
           <p>
             If we approve a refund, it goes back to the{" "}
@@ -251,8 +255,16 @@ export default function RefundPolicyPage() {
           </p>
           <p>
             Please <strong>contact us first</strong> at{" "}
-            <strong>【CONFIRM: support email】</strong> before raising a
-            chargeback. We can almost always sort out a genuine problem more
+            <strong>
+              <a
+                href="mailto:dengdan01@gmail.com"
+                className="underline hover:text-stone-900"
+              >
+                dengdan01@gmail.com
+              </a>
+            </strong>{" "}
+            before raising a chargeback. We can almost always sort out a genuine
+            problem more
             quickly and directly than a bank dispute can. Raising a chargeback
             before talking to us just slows things down for both of us.
           </p>
@@ -265,8 +277,15 @@ export default function RefundPolicyPage() {
         >
           <p>
             For anything in this policy, email{" "}
-            <strong>【CONFIRM: support email】</strong>. We are a small,
-            UK-based sole trader and we read every message.
+            <strong>
+              <a
+                href="mailto:dengdan01@gmail.com"
+                className="underline hover:text-stone-900"
+              >
+                dengdan01@gmail.com
+              </a>
+            </strong>
+            . We are a small, UK-based sole trader and we read every message.
           </p>
         </Section>
 

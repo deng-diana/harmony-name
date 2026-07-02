@@ -9,8 +9,12 @@
 import { stripe } from "@/lib/stripe";
 import { createClient } from "@/lib/supabase/server";
 import { getPack } from "@/lib/creditPacks";
+import { checkoutRatelimit } from "@/lib/ratelimit";
+import { z } from "zod";
 
 export const dynamic = "force-dynamic";
+
+const checkoutBodySchema = z.object({ packId: z.string().max(32) });
 
 export async function POST(request: Request) {
   if (!stripe) {
@@ -32,8 +36,35 @@ export async function POST(request: Request) {
     );
   }
 
-  const { packId } = await request.json();
-  const pack = getPack(packId);
+  // Rate-limit checkout session creation per user (skip if Upstash unconfigured).
+  if (checkoutRatelimit) {
+    const { success } = await checkoutRatelimit.limit(user.id);
+    if (!success) {
+      return Response.json(
+        { error: "Too many requests, please slow down.", code: "RATE_LIMITED" },
+        { status: 429 }
+      );
+    }
+  }
+
+  // Parse + validate the body (never trust its shape). Matches /api/generate.
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return Response.json(
+      { error: "Invalid request", code: "VALIDATION_ERROR" },
+      { status: 400 }
+    );
+  }
+  const parsed = checkoutBodySchema.safeParse(body);
+  if (!parsed.success) {
+    return Response.json(
+      { error: "Invalid request", code: "VALIDATION_ERROR" },
+      { status: 400 }
+    );
+  }
+  const pack = getPack(parsed.data.packId);
   if (!pack) {
     return Response.json(
       { error: "Invalid pack", code: "INVALID_PACK" },
@@ -41,8 +72,13 @@ export async function POST(request: Request) {
     );
   }
 
+  // Never trust the client Origin header for redirect URLs (an attacker could
+  // point success/cancel at their own site). In prod, pin the canonical domain;
+  // in dev/preview fall back to the request's own origin.
   const origin =
-    request.headers.get("origin") ?? new URL(request.url).origin;
+    process.env.VERCEL_ENV === "production"
+      ? "https://harmonyname.com"
+      : new URL(request.url).origin;
 
   const session = await stripe.checkout.sessions.create({
     mode: "payment",
@@ -58,6 +94,18 @@ export async function POST(request: Request) {
         },
       },
     ],
+    // Digital goods delivered immediately: tell the buyer they agree to the
+    // Terms and waive the 14-day EU/UK cancellation right once credits land.
+    // NOTE: consent_collection.terms_of_service = "required" also needs a Terms
+    // URL configured in the Stripe dashboard, or session creation FAILS. Until
+    // that's set, we ship only custom_text (safe) and leave consent_collection
+    // off — enable it after the dashboard Terms URL is configured.
+    custom_text: {
+      submit: {
+        message:
+          "By purchasing you agree to our Terms and request immediate delivery of credits, acknowledging that you lose the 14-day cancellation right once credits are delivered.",
+      },
+    },
     success_url: `${origin}/app?purchase=success`,
     cancel_url: `${origin}/app?purchase=cancelled`,
     client_reference_id: user.id,

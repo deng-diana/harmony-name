@@ -17,7 +17,7 @@ import { searchPoems } from "@/lib/retriever";
 import { generateRequestSchema } from "@/lib/schemas";
 import { createClient } from "@/lib/supabase/server";
 import { deductCredit, refundCredit } from "@/lib/credits";
-import { generateRatelimit } from "@/lib/ratelimit";
+import { generateRatelimit, generateIpRatelimit } from "@/lib/ratelimit";
 import * as Sentry from "@sentry/nextjs";
 import {
   createSystemPromptStatic,
@@ -34,7 +34,6 @@ const PIPELINE_V2 = process.env.NAMING_PIPELINE_V2 === "true";
 // 流式 AI 生成可能耗时;放宽超时(Vercel 平台默认上限现为 300s)。
 // 运行时保持 Node(默认,Fluid Compute)——不要用 Edge。
 export const maxDuration = 300;
-export const dynamic = "force-dynamic";
 
 /** 进度步骤 (校验已移到流外,故只剩 3 步) */
 const STEPS = {
@@ -71,9 +70,40 @@ export async function POST(request: Request) {
     );
   }
 
-  // ===== ①.5 限流(防刷/防爆发烧钱;无 Upstash 配置时自动跳过)=====
+  // ===== ①.5 限流(防刷/防爆发烧钱)=====
+  // 生产环境【必须】有限流器。Upstash 在生产已配置,若这里为 null 说明配置漏了 →
+  // 【fail closed】(503)而非无限放行,避免"限流静默失效 → 被刷爆 AI 额度烧钱"。
+  // 本地/预览无 Upstash 时保持跳过(下面 if 分支自然不进)。
+  if (process.env.VERCEL_ENV === "production" && (!generateRatelimit || !generateIpRatelimit)) {
+    Sentry.captureMessage(
+      "Rate limiter unconfigured in production — /api/generate failing closed",
+      { level: "error" }
+    );
+    return Response.json(
+      { error: "Service temporarily unavailable", code: "RATE_LIMITER_UNCONFIGURED" },
+      { status: 503 }
+    );
+  }
+  // 双闸:按用户 id 限流 + 按来源 IP 限流(后者堵"多小号刷免费额度")。
   if (generateRatelimit) {
     const { success } = await generateRatelimit.limit(user.id);
+    if (!success) {
+      return Response.json(
+        { error: "Too many requests, please slow down.", code: "RATE_LIMITED" },
+        { status: 429 }
+      );
+    }
+  }
+  if (generateIpRatelimit) {
+    // Trust the platform-injected x-real-ip first. On Vercel proxies APPEND the
+    // real client IP to x-forwarded-for, so the FIRST hop is client-spoofable —
+    // take the LAST entry instead. "unknown" is a shared-bucket last resort.
+    const xff = request.headers.get("x-forwarded-for");
+    const ip =
+      request.headers.get("x-real-ip")?.trim() ||
+      xff?.split(",").pop()?.trim() ||
+      "unknown";
+    const { success } = await generateIpRatelimit.limit(ip);
     if (!success) {
       return Response.json(
         { error: "Too many requests, please slow down.", code: "RATE_LIMITED" },
@@ -131,13 +161,41 @@ export async function POST(request: Request) {
   const stream = new TransformStream();
   const writer = stream.writable.getWriter();
 
-  const sendEvent = async (type: string, payload: Record<string, unknown>) => {
-    await writer.write(encoder.encode(`data: ${JSON.stringify({ type, ...payload })}\n\n`));
+  // sendEvent MUST NEVER THROW: once the client disconnects, writer.write() rejects.
+  // If that rejection escaped into failAndRefund / the catch, it would re-reject on a
+  // dead writer and surface as an unhandledRejection. So we swallow write failures
+  // here and return a boolean the caller may inspect.
+  const sendEvent = async (
+    type: string,
+    payload: Record<string, unknown>
+  ): Promise<boolean> => {
+    try {
+      await writer.write(
+        encoder.encode(`data: ${JSON.stringify({ type, ...payload })}\n\n`)
+      );
+      return true;
+    } catch {
+      return false; // client gone / writer closed — never throw from an SSE write
+    }
   };
+
+  // SSE keepalive: the Composer call can run 30–60s with no progress event, and idle
+  // proxies kill silent streams. A comment frame (starts with ":") is NOT a data event
+  // — the client parser splits on "\n\n" then looks for a "data: " line, so it ignores
+  // these. Fire every 15s; cleared in finally. Never throws (fire-and-forget catch).
+  const keepaliveTimer = setInterval(() => {
+    writer.write(encoder.encode(`: keepalive\n\n`)).catch(() => {});
+  }, 15_000);
 
   (async () => {
     let refunded = false;
-    // 失败统一出口: 退款 + 推送 error 事件(并把退还后的余额带给前端)
+    // Flip to true the instant the pipeline yields real names — BEFORE archive/result
+    // write. Guards the post-success disconnect loophole: if a later step (archive or
+    // the result write) fails because the client left, the user already earned their
+    // result, so we must NOT refund on that path (see the catch below).
+    let generationSucceeded = false;
+    // 失败统一出口: 退款 + 推送 error 事件(并把退还后的余额带给前端)。
+    // sendEvent 已保证不抛,故这里的 await 不会因客户端断开而 reject。
     const failAndRefund = async (payload: Record<string, unknown>) => {
       if (!refunded) {
         await refundCredit(user.id);
@@ -178,9 +236,22 @@ export async function POST(request: Request) {
           },
           {
             onProgress: (step, total, message) => {
-              // fire-and-forget,但吞掉 rejection:客户端断开后再写会 reject,
-              // 不 catch 会变成 unhandledRejection。
-              sendEvent("progress", { step, total, message }).catch(() => {});
+              // fire-and-forget;sendEvent 已吞掉写失败,不会变成 unhandledRejection。
+              void sendEvent("progress", { step, total, message });
+            },
+            // Grounded narrative stream: true, code-derived facts about the run,
+            // rendered as the master's-journal under the progress bar. Separate
+            // event type keeps the stepper contract untouched (legacy path emits
+            // none of these). fire-and-forget, same swallow-on-disconnect guard.
+            onNarrative: (text, at) => {
+              void sendEvent("narrative", { text, at });
+            },
+            // Cancel in-flight LLM calls when the client disconnects (stop paying).
+            signal: request.signal,
+            // Escalate SILENT LLM degradations (swallowed Composer/Critic API errors)
+            // to Sentry — orchestrate.ts stays Sentry-free and calls back through here.
+            onError: (err, stage) => {
+              Sentry.captureException(err, { tags: { pipeline_stage: stage } });
             },
           }
         );
@@ -223,21 +294,25 @@ export async function POST(request: Request) {
           recommendedNameLength,
         });
 
-        const message = await getClaude().messages.create({
-          model: NAMING_MODEL,
-          max_tokens: 4096,
-          temperature: 0.7,
-          // 静态指令缓存(省 ~90% 输入 token);诗词块每次不同,不缓存
-          system: [
-            {
-              type: "text",
-              text: createSystemPromptStatic(),
-              cache_control: { type: "ephemeral" },
-            },
-            { type: "text", text: buildPoemsBlock(poemsContextText) },
-          ],
-          messages: [{ role: "user", content: userMessage }],
-        });
+        const message = await getClaude().messages.create(
+          {
+            model: NAMING_MODEL,
+            max_tokens: 4096,
+            temperature: 0.7,
+            // 静态指令缓存(省 ~90% 输入 token);诗词块每次不同,不缓存
+            system: [
+              {
+                type: "text",
+                text: createSystemPromptStatic(),
+                cache_control: { type: "ephemeral" },
+              },
+              { type: "text", text: buildPoemsBlock(poemsContextText) },
+            ],
+            messages: [{ role: "user", content: userMessage }],
+          },
+          // Cancel the call if the client disconnects (same abort propagation as v2).
+          { signal: request.signal }
+        );
 
         const textBlock = message.content.find((block) => block.type === "text");
         const content = textBlock?.text;
@@ -259,32 +334,99 @@ export async function POST(request: Request) {
         }
       }
 
+      // Generation is done and usable. Mark success BEFORE any archive/result write
+      // so a downstream failure (dead-client write, DB hiccup) does NOT trigger a
+      // refund of a result the user actually earned. See the catch below.
+      generationSucceeded = true;
+
+      // Public share slug: a short, URL-safe id for the /n/<slug> shareable page
+      // (the viral loop). Generated server-side and written with the archive row;
+      // handed to the client in the result payload so it can build the share URL.
+      const publicSlug = crypto.randomUUID().replace(/-/g, "").slice(0, 12);
+
       // --- 存档到历史 (user_id 由 DB 默认 auth.uid() 填充;失败不影响返回) ---
+      // Written FIRST (before the result event) so we know whether the slug landed
+      // and can honestly tell the client the share URL. A failed archive must never
+      // block the paid-for result — every path below still sends the result.
+      const archiveInput = {
+        gender,
+        dayMaster,
+        strength,
+        favourableElements,
+        avoidElements,
+        recommendedNameLength,
+      };
+      let slugForClient: string | null = null;
       const { error: archiveError } = await supabase.from("generations").insert({
-        input: {
-          gender,
-          dayMaster,
-          strength,
-          favourableElements,
-          avoidElements,
-          recommendedNameLength,
-        },
+        input: archiveInput,
         result: parsed,
+        public_slug: publicSlug,
+        is_public: true,
       });
       if (archiveError) {
-        console.error("Failed to archive generation:", archiveError.message);
+        // Graceful degradation (same pattern as the Stripe webhook's 012 fallback):
+        // if migration 013 hasn't been run yet the new columns don't exist
+        // (PGRST204 = column not in schema cache; 42703 = undefined_column). Retry
+        // the insert WITHOUT the share fields so history still archives; the share
+        // feature stays quietly off (no slug in the payload) until the SQL is run.
+        if (archiveError.code === "PGRST204" || archiveError.code === "42703") {
+          const { error: retryError } = await supabase
+            .from("generations")
+            .insert({ input: archiveInput, result: parsed });
+          if (retryError) {
+            console.error("Failed to archive generation:", retryError.message);
+          }
+        } else {
+          console.error("Failed to archive generation:", archiveError.message);
+        }
+      } else {
+        slugForClient = publicSlug;
       }
 
-      // --- 完成 (把扣减后的余额一并返回,前端可即时刷新显示) ---
+      // --- 完成 (把扣减后的余额 + 分享 slug 一并返回,前端可即时刷新显示) ---
       if (!PIPELINE_V2) await sendEvent("progress", STEPS.DONE);
-      await sendEvent("result", { data: parsed, creditsRemaining });
+      await sendEvent("result", {
+        data: parsed,
+        creditsRemaining,
+        publicSlug: slugForClient,
+      });
     } catch (error: unknown) {
-      // 详细原因只记到服务端日志,绝不随 SSE 发给前端
       const errMessage = error instanceof Error ? error.message : String(error);
-      console.error("Generation failed:", errMessage);
-      Sentry.captureException(error); // 上报到 Sentry(我们自己 catch 了,需手动上报)
-      await failAndRefund({ error: "Generation failed", code: "API_ERROR" });
+      // Robust abort detection: our pipeline throws a named AbortError, but an SDK
+      // abort may carry a different name — the signal being aborted is the ground truth.
+      const isAbort =
+        request.signal.aborted ||
+        (error instanceof Error && error.name === "AbortError");
+
+      if (generationSucceeded) {
+        // The result was produced (and the credit legitimately spent); only a
+        // post-success step failed — almost always the client having disconnected
+        // before the result write landed. Do NOT refund: the user earned the result.
+        // Log + Sentry so we still see the disconnect rate.
+        console.error("Post-success stream/archive failure (no refund):", errMessage);
+        Sentry.captureMessage(
+          "SSE post-success failure: result produced but stream/archive write failed",
+          { level: "warning", extra: { userId: user.id, error: errMessage } }
+        );
+      } else if (isAbort) {
+        // Client disconnected mid-generation — they paid but got nothing usable, so
+        // REFUND. Do NOT write to the dead stream (sendEvent would no-op anyway).
+        // Nothing was archived (abort throws before the archive step).
+        console.error("Generation aborted by client disconnect; refunding.");
+        if (!refunded) {
+          await refundCredit(user.id);
+          refunded = true;
+        }
+      } else {
+        // Genuine generation failure → refund + push an error event to the client.
+        // 详细原因只记到服务端日志,绝不随 SSE 发给前端。
+        console.error("Generation failed:", errMessage);
+        Sentry.captureException(error); // 我们自己 catch 了,需手动上报
+        await failAndRefund({ error: "Generation failed", code: "API_ERROR" });
+      }
     } finally {
+      // Stop the keepalive heartbeat before closing the writer.
+      clearInterval(keepaliveTimer);
       // 防御:writer 已关闭(客户端断开 / 上面分支提前 return 但 finally 兜底再 close 也无害)
       // 再 close 一次会 TypeError "Invalid state",必须吞掉 —— 否则 fire-and-forget
       // IIFE 里逃出去变成 unhandledRejection。
@@ -294,7 +436,12 @@ export async function POST(request: Request) {
         /* writer already closed — fine */
       }
     }
-  })();
+  })().catch((err) => {
+    // Last-resort guard: nothing above should throw (sendEvent/keepalive/finally are
+    // all defensive), but if anything slips through, capture it instead of letting it
+    // become an unhandledRejection.
+    Sentry.captureException(err);
+  });
 
   return new Response(stream.readable, {
     headers: {

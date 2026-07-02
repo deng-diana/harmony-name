@@ -1,8 +1,14 @@
+"use client";
+
+import { useState } from "react";
+import { ChevronDown } from "lucide-react";
 import type { BaziResult } from "@/lib/bazi";
 import { ARCHETYPES } from "@/lib/bazi";
 import { ELEMENTS, type Element } from "@/lib/elements";
 import { HighlightText } from "./HighlightText";
 import { ShareElementButton } from "./ElementShareCard";
+import { ElementCompatibility } from "./ElementCompatibility";
+import { cn } from "@/lib/cn";
 
 /**
  * 极简身份卡(2026-06-18 重构):面向看不懂命理的外国用户。
@@ -29,6 +35,9 @@ export function DestinyCard({ baziResult }: { baziResult: BaziResult }) {
   const seasonal = baziResult.coreExplanation.points.find((p) =>
     /season/i.test(p.label)
   );
+
+  // "Who you naturally click with" — collapsed by default to keep the naming flow clean.
+  const [compatOpen, setCompatOpen] = useState(false);
 
   return (
     <section className="bg-paper-raised rounded-3xl shadow-soft border border-mist/70 overflow-hidden">
@@ -80,6 +89,35 @@ export function DestinyCard({ baziResult }: { baziResult: BaziResult }) {
             </ul>
           </>
         )}
+
+        {/* ===== Who you naturally click with (collapsible, default closed) ===== */}
+        <div className="mt-8 border-t border-mist/70 pt-6">
+          <button
+            type="button"
+            onClick={() => setCompatOpen((v) => !v)}
+            aria-expanded={compatOpen}
+            className="flex w-full items-center justify-between gap-3 text-left text-ink font-medium hover:text-gold transition-colors"
+          >
+            <span>Who you naturally click with</span>
+            <ChevronDown
+              className={cn(
+                "w-5 h-5 shrink-0 transition-transform duration-300",
+                compatOpen && "rotate-180"
+              )}
+              aria-hidden
+            />
+          </button>
+
+          {compatOpen && (
+            <div className="animate-fade-in">
+              <ElementCompatibility
+                dayMaster={dayMaster}
+                favourableElements={baziResult.favourableElements}
+                avoidElements={baziResult.avoidElements}
+              />
+            </div>
+          )}
+        </div>
       </div>
     </section>
   );

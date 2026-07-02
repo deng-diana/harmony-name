@@ -11,8 +11,8 @@ export const metadata = {
  *
  * Plain-English, dyslexia-friendly layout: each major section opens with a
  * one-line italic summary, then the detail. Abbreviations are spelled out on
- * first use. Visible 【CONFIRM: ...】 placeholders mark facts the operator must
- * fill in before publishing.
+ * first use. Operated by a UK-based individual sole trader; the full legal
+ * name is pending confirmation (see TODO(owner) comments).
  */
 
 function Summary({ children }: { children: React.ReactNode }) {
@@ -58,15 +58,8 @@ export default function PrivacyPolicyPage() {
           </h1>
 
           <p className="text-stone-600 mb-2">
-            <strong>Last updated: 【CONFIRM: date】</strong>
+            <strong>Last updated: 2 July 2026</strong>
           </p>
-
-          <div className="mt-6 bg-amber-50 border border-amber-200 rounded-2xl p-5">
-            <p className="italic text-amber-900 leading-relaxed">
-              This is a starting template. Please have a UK (United Kingdom)
-              solicitor or privacy specialist review it before relying on it.
-            </p>
-          </div>
 
           <p className="mt-6 text-stone-700 leading-relaxed">
             This policy explains how <strong>HarmonyName</strong> (the website
@@ -100,8 +93,9 @@ export default function PrivacyPolicyPage() {
             </p>
             <ul className="list-disc pl-6 space-y-1">
               <li>
-                <strong>Data controller:</strong> 【CONFIRM: operator&apos;s
-                full legal name】
+                <strong>Data controller:</strong> an individual sole trader
+                based in the United Kingdom
+                {/* TODO(owner): replace with full legal name after confirmation */}
               </li>
               <li>
                 <strong>Trading name:</strong> HarmonyName
@@ -110,8 +104,13 @@ export default function PrivacyPolicyPage() {
                 <strong>Website:</strong> harmonyname.com
               </li>
               <li>
-                <strong>Contact email:</strong> 【CONFIRM: privacy/support
-                email】
+                <strong>Contact email:</strong>{" "}
+                <a
+                  href="mailto:dengdan01@gmail.com"
+                  className="underline hover:text-stone-900"
+                >
+                  dengdan01@gmail.com
+                </a>
               </li>
             </ul>
             <p>
@@ -319,18 +318,19 @@ export default function PrivacyPolicyPage() {
             </p>
             <ul className="list-disc pl-6 space-y-1">
               <li>
-                <strong>Account and birth data:</strong> 【CONFIRM: retention
-                period — e.g. kept while your account is active, then deleted
-                within X days of closure】
+                <strong>Account and birth data:</strong> kept while your
+                account exists. When you delete your account, or ask us to
+                delete your data by emailing our support address, we delete it.
               </li>
               <li>
-                <strong>Generated names and analysis:</strong> 【CONFIRM:
-                retention period】
+                <strong>Generated names and analysis:</strong> your generation
+                history (including the birth details you entered) is stored
+                until you delete your account or request deletion via our
+                support email.
               </li>
               <li>
-                <strong>Purchase / billing records:</strong> 【CONFIRM:
-                retention period — UK tax rules often require keeping records for
-                around 6 years】
+                <strong>Purchase / billing records:</strong> retained as
+                required by UK tax law (around 6 years).
               </li>
             </ul>
             <p>
@@ -378,9 +378,14 @@ export default function PrivacyPolicyPage() {
               </li>
             </ul>
             <p>
-              To use any of these rights, email us at 【CONFIRM:
-              privacy/support email】. Using your rights is free, and we will
-              respond within one month.
+              To use any of these rights, email us at{" "}
+              <a
+                href="mailto:dengdan01@gmail.com"
+                className="underline hover:text-stone-900"
+              >
+                dengdan01@gmail.com
+              </a>
+              . Using your rights is free, and we will respond within one month.
             </p>
             <p>
               If you are unhappy with how we handle your data, you can complain
@@ -428,10 +433,11 @@ export default function PrivacyPolicyPage() {
               </li>
             </ul>
             <p>
-              <strong>Analytics:</strong> 【CONFIRM: do you use any analytics
-              (for example, traffic measurement)? If yes, name the tool and note
-              that non-essential analytics cookies need consent. If no, state
-              that you do not use analytics cookies.】
+              <strong>Analytics:</strong> we use{" "}
+              <strong>Vercel Analytics</strong>, a cookieless, privacy-friendly
+              analytics service. It does not track you across other websites and
+              collects no personal identifiers. Our custom product events (for
+              example, when a name is generated) contain no birth data.
             </p>
           </Section>
 
@@ -442,9 +448,9 @@ export default function PrivacyPolicyPage() {
             </Summary>
             <p>
               HarmonyName is not directed at children. You must be at least{" "}
-              <strong>16 years old</strong> to create an account and use the
-              service (and in any case not under 13). If you believe a child has
-              given us personal data, please contact us and we will delete it.
+              <strong>18 years old</strong> to create an account and use the
+              service. If you believe a child has given us personal data, please
+              contact us and we will delete it.
             </p>
           </Section>
 
@@ -468,11 +474,20 @@ export default function PrivacyPolicyPage() {
             </Summary>
             <p>
               For any privacy question, or to use any of your rights, email{" "}
-              <strong>【CONFIRM: privacy/support email】</strong>.
+              <strong>
+                <a
+                  href="mailto:dengdan01@gmail.com"
+                  className="underline hover:text-stone-900"
+                >
+                  dengdan01@gmail.com
+                </a>
+              </strong>
+              .
             </p>
             <p>
-              Data controller: 【CONFIRM: operator&apos;s full legal name】,
-              trading as HarmonyName.
+              Data controller: an individual sole trader based in the United
+              Kingdom, trading as HarmonyName.
+              {/* TODO(owner): replace with full legal name after confirmation */}
             </p>
           </Section>
         </main>

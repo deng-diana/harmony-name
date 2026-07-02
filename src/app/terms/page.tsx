@@ -15,9 +15,9 @@ export const metadata: Metadata = {
  *  - font-serif bold headings, stone-900 / stone-600 body text
  *  - rounded cards with stone-100 borders
  *
- * NOTE: This is a starting template. Several values are intentionally left as
- * visible 【CONFIRM: ...】 placeholders for the owner to fill in, and a UK
- * solicitor should review the whole document before it is relied upon.
+ * NOTE: Operated by a UK-based individual sole trader. The full legal name is
+ * pending confirmation; TODO(owner) comments mark the spots where it should be
+ * inserted once confirmed.
  */
 
 // One reusable section block. The italic summary is the plain-English
@@ -69,16 +69,8 @@ export default function TermsPage() {
           </p>
 
           <p className="text-sm text-stone-500">
-            <strong>Last updated:</strong> 【CONFIRM date】
+            <strong>Last updated:</strong> 2 July 2026
           </p>
-
-          {/* Visible draft warning */}
-          <div className="mt-8 rounded-2xl border border-amber-200 bg-amber-50 p-5">
-            <p className="text-sm text-amber-800 italic leading-relaxed">
-              This is a starting template. Please have a UK solicitor review it
-              before relying on it.
-            </p>
-          </div>
         </header>
 
         {/* Plain intro */}
@@ -88,10 +80,11 @@ export default function TermsPage() {
             between you and us. They explain the rules for using HarmonyName.
           </p>
           <p>
-            HarmonyName is run by a sole trader based in the United Kingdom (a
-            single person, not a company). Where these Terms say &ldquo;we,
-            &rdquo; &ldquo;us,&rdquo; or &ldquo;our,&rdquo; they mean that
-            person: 【CONFIRM: operator&rsquo;s full legal name】.
+            HarmonyName is operated by an individual sole trader based in the
+            United Kingdom (a single person, not a company). Where these Terms
+            say &ldquo;we,&rdquo; &ldquo;us,&rdquo; or &ldquo;our,&rdquo; they
+            mean that sole trader.
+            {/* TODO(owner): replace with full legal name after confirmation */}
           </p>
           <p>
             Please read these Terms carefully. If you do not agree with them,
@@ -209,11 +202,12 @@ export default function TermsPage() {
             asking for them to be made available straight away, you agree that
             delivery begins at once. This can affect that 14-day right for
             credits you have already used. Nothing here removes any legal right
-            you cannot waive.{" "}
-            <span className="text-stone-500 italic">
-              【CONFIRM: your refund policy — for example, do you refund unused
-              credits? A solicitor should confirm the wording here.】
-            </span>
+            you cannot waive. See our{" "}
+            <Link href="/refund" className="underline hover:text-stone-900">
+              Refund &amp; Cancellation Policy
+            </Link>{" "}
+            for full details, including a goodwill refund for wholly unused
+            credits requested within 14 days.
           </p>
         </Section>
 
@@ -319,13 +313,7 @@ export default function TermsPage() {
           <p>
             Where our liability cannot be excluded but can be limited, our total
             liability to you will not be more than the amount you paid us in the{" "}
-            <strong>
-              【CONFIRM: liability cap period, e.g. 12 months】
-            </strong>{" "}
-            before the issue arose.{" "}
-            <span className="text-stone-500 italic">
-              (A solicitor should confirm this cap is fair and enforceable.)
-            </span>
+            <strong>12 months</strong> before the issue arose.
           </p>
         </Section>
 
@@ -357,11 +345,9 @@ export default function TermsPage() {
           <p>
             We may suspend or close your account if you break these Terms, if we
             are required to by law, or if we decide to stop offering the service.
-            If we close your account without good reason, we will deal fairly with
-            any credits you have already paid for.{" "}
-            <span className="text-stone-500 italic">
-              【CONFIRM: what happens to unused credits when an account closes】
-            </span>
+            If we close your account without good reason, we will deal fairly
+            with any credits you have already paid for and refund any that
+            remain wholly unused.
           </p>
         </Section>
 
@@ -397,12 +383,17 @@ export default function TermsPage() {
           </p>
           <p>
             <strong>
-              【CONFIRM: support email, e.g. support@harmonyname.com】
+              <a
+                href="mailto:dengdan01@gmail.com"
+                className="underline hover:text-stone-900"
+              >
+                dengdan01@gmail.com
+              </a>
             </strong>
           </p>
           <p className="text-stone-500 text-sm">
-            Operated by a UK-based sole trader:{" "}
-            【CONFIRM: operator&rsquo;s full legal name】.
+            Operated by an individual sole trader based in the United Kingdom.
+            {/* TODO(owner): replace with full legal name after confirmation */}
           </p>
         </Section>
 

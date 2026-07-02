@@ -28,6 +28,10 @@
 /docs/
 scripts/poem-chunks.json
 
+# Corpus backups (timestamped .json.gz snapshots from `npm run backup:corpus`).
+# Local safety net for the destructive seed; too large + regenerable for git.
+/backups/
+
 # Claude Code internal state (per-session locks, etc.)
 /.claude/
 
