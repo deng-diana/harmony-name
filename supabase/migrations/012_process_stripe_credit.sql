@@ -15,9 +15,12 @@
 --   security-definer function, in one transaction. The unique-key INSERT is
 --   the lock: whoever wins the INSERT grants the credits; everyone else sees
 --   ON CONFLICT DO NOTHING (no row inserted) and returns false = already done.
---   No delete-on-failure step exists, so the race is gone: if the UPDATE
---   throws, the whole transaction (including the INSERT) rolls back, so a
---   retry can cleanly re-process.
+--   No delete-on-failure step exists, so the race is gone: if the credit
+--   grant fails, the whole transaction (including the INSERT) rolls back, so a
+--   retry can cleanly re-process. Note a zero-row UPDATE does NOT throw, so a
+--   missing profile is caught explicitly via GET DIAGNOSTICS ROW_COUNT and
+--   turned into an exception — otherwise the idempotency row would commit and
+--   a paying customer's credits would be lost forever.
 --
 -- Run: copy into the Supabase SQL Editor -> Run
 -- ============================================================
@@ -33,6 +36,7 @@ security definer set search_path = ''
 as $$
 declare
   v_claimed integer;
+  v_updated integer;
 begin
   if p_credits <= 0 then
     raise exception 'INVALID_AMOUNT';
@@ -49,13 +53,20 @@ begin
     return false;  -- already processed; do NOT grant again
   end if;
 
-  -- First time for this event -> grant the credits atomically. If this UPDATE
-  -- throws, the whole txn (including the INSERT above) rolls back, so a Stripe
-  -- retry can re-process cleanly. No delete-on-failure step is needed.
+  -- First time for this event -> grant the credits atomically.
   update public.profiles
      set credits = credits + p_credits,
          updated_at = now()
    where id = p_user_id;
+
+  -- A zero-row UPDATE (profile row missing) does NOT raise on its own, so the
+  -- idempotency INSERT above would otherwise commit and the credits would be
+  -- lost forever. Check ROW_COUNT and raise so the whole txn (INSERT included)
+  -- rolls back -> the webhook 500s -> Stripe retries -> nothing is lost.
+  get diagnostics v_updated = row_count;
+  if v_updated = 0 then
+    raise exception 'PROFILE_NOT_FOUND for user %', p_user_id;
+  end if;
 
   return true;
 end;

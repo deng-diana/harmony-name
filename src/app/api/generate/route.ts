@@ -95,8 +95,14 @@ export async function POST(request: Request) {
     }
   }
   if (generateIpRatelimit) {
+    // Trust the platform-injected x-real-ip first. On Vercel proxies APPEND the
+    // real client IP to x-forwarded-for, so the FIRST hop is client-spoofable —
+    // take the LAST entry instead. "unknown" is a shared-bucket last resort.
+    const xff = request.headers.get("x-forwarded-for");
     const ip =
-      request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+      request.headers.get("x-real-ip")?.trim() ||
+      xff?.split(",").pop()?.trim() ||
+      "unknown";
     const { success } = await generateIpRatelimit.limit(ip);
     if (!success) {
       return Response.json(

@@ -131,15 +131,25 @@ async function legacyGrant(
     return new Response("DB error", { status: 500 });
   }
 
-  const { error } = await admin.rpc("add_credits", {
+  const { data, error } = await admin.rpc("add_credits", {
     p_user_id: userId,
     p_amount: credits,
   });
-  if (error) {
-    // add_credits failed -> delete the idempotency row so a Stripe retry can
+  // add_credits returns NULL (not an error) when the profile row is missing —
+  // it grants nothing. Treat a null/undefined return as a failed grant too, or
+  // the idempotency row would commit and a paying user's credits vanish.
+  if (error || data == null) {
+    // Grant failed -> delete the idempotency row so a Stripe retry can
     // re-process (otherwise these credits are lost forever).
     await admin.from("stripe_processed_events").delete().eq("event_id", eventId);
-    console.error("add_credits failed in webhook:", error.message);
+    if (error) {
+      console.error("add_credits failed in webhook:", error.message);
+    } else {
+      Sentry.captureException(
+        new Error("add_credits returned null — profile row missing, no credits granted"),
+        { extra: { eventId, userId } }
+      );
+    }
     return new Response("DB error", { status: 500 });
   }
   return new Response("ok", { status: 200 });
