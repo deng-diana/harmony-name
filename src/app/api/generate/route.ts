@@ -17,7 +17,7 @@ import { searchPoems } from "@/lib/retriever";
 import { generateRequestSchema } from "@/lib/schemas";
 import { createClient } from "@/lib/supabase/server";
 import { deductCredit, refundCredit } from "@/lib/credits";
-import { generateRatelimit } from "@/lib/ratelimit";
+import { generateRatelimit, generateIpRatelimit } from "@/lib/ratelimit";
 import * as Sentry from "@sentry/nextjs";
 import {
   createSystemPromptStatic,
@@ -70,9 +70,34 @@ export async function POST(request: Request) {
     );
   }
 
-  // ===== ①.5 限流(防刷/防爆发烧钱;无 Upstash 配置时自动跳过)=====
+  // ===== ①.5 限流(防刷/防爆发烧钱)=====
+  // 生产环境【必须】有限流器。Upstash 在生产已配置,若这里为 null 说明配置漏了 →
+  // 【fail closed】(503)而非无限放行,避免"限流静默失效 → 被刷爆 AI 额度烧钱"。
+  // 本地/预览无 Upstash 时保持跳过(下面 if 分支自然不进)。
+  if (process.env.VERCEL_ENV === "production" && (!generateRatelimit || !generateIpRatelimit)) {
+    Sentry.captureMessage(
+      "Rate limiter unconfigured in production — /api/generate failing closed",
+      { level: "error" }
+    );
+    return Response.json(
+      { error: "Service temporarily unavailable", code: "RATE_LIMITER_UNCONFIGURED" },
+      { status: 503 }
+    );
+  }
+  // 双闸:按用户 id 限流 + 按来源 IP 限流(后者堵"多小号刷免费额度")。
   if (generateRatelimit) {
     const { success } = await generateRatelimit.limit(user.id);
+    if (!success) {
+      return Response.json(
+        { error: "Too many requests, please slow down.", code: "RATE_LIMITED" },
+        { status: 429 }
+      );
+    }
+  }
+  if (generateIpRatelimit) {
+    const ip =
+      request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+    const { success } = await generateIpRatelimit.limit(ip);
     if (!success) {
       return Response.json(
         { error: "Too many requests, please slow down.", code: "RATE_LIMITED" },

@@ -11,6 +11,7 @@
  */
 import { stripe } from "@/lib/stripe";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import * as Sentry from "@sentry/nextjs";
 import type Stripe from "stripe";
 
 export const dynamic = "force-dynamic";
@@ -46,44 +47,100 @@ export async function POST(request: Request) {
       return new Response("ok", { status: 200 });
     }
 
-    // ②.b 幂等(DB 持久):首次插入 event_id 成功才是首次处理;唯一冲突 = 已处理过。
-    //      不依赖 Redis(可选/可能没配),从根上堵住"重试 → 重复发积分 → 漏钱"。
-    const { error: dupeErr } = await admin
-      .from("stripe_processed_events")
-      .insert({ event_id: event.id });
-    if (dupeErr) {
-      if (dupeErr.code === "23505") {
-        // unique_violation = 这个事件已经处理过了,幂等放行。
-        return new Response("Already processed", { status: 200 });
-      }
-      if (dupeErr.code === "42P01") {
-        // 表还没建(迁移 009 未跑)→ 优雅降级:不强幂等、照常发积分(等同旧 Redis-less
-        // 行为,不比现状更差),避免"代码先上、迁移没跑 → 所有购买 500 发不了积分"。
-        // 跑完 009 后强幂等自动生效。
-        console.warn("stripe_processed_events missing — run migration 009 to enable idempotency");
-      } else {
-        // 其它 DB 错(瞬时)→ 500 让 Stripe 重试,不放过这笔。
-        console.error("idempotency insert failed:", dupeErr.message);
-        return new Response("DB error", { status: 500 });
-      }
-    }
-
-    // ②.c 发积分
+    // ②.b Read the grant target FIRST so we can validate before touching the DB.
     const userId = session.metadata?.userId;
     const credits = Number(session.metadata?.credits);
-    if (userId && credits > 0) {
-      const { error } = await admin.rpc("add_credits", {
-        p_user_id: userId,
-        p_amount: credits,
-      });
-      if (error) {
-        // 加分失败 → 删掉幂等记录,让 Stripe 重试时能重新处理(否则这笔积分永久丢失)。
-        await admin.from("stripe_processed_events").delete().eq("event_id", event.id);
-        console.error("add_credits failed in webhook:", error.message);
-        return new Response("DB error", { status: 500 });
+    if (!userId || !(credits > 0)) {
+      // Missing/garbage metadata: we cannot know who to credit or how much.
+      // This should never happen for a session we created — surface it loudly
+      // (a mis-shaped checkout, a manual Stripe dashboard payment, etc.).
+      Sentry.captureException(
+        new Error("Stripe webhook: paid session with missing/invalid metadata"),
+        { extra: { eventId: event.id, userId, credits: session.metadata?.credits } }
+      );
+      // Ack so Stripe stops retrying an event we can never satisfy.
+      return new Response("ok", { status: 200 });
+    }
+
+    // ②.c 原子发积分(幂等 + 加分在一个事务里,消除并发重试丢积分的竞态)。
+    //      首选 process_stripe_credit RPC(迁移 012);它一步完成"占位去重 + 加分",
+    //      返回 true = 首次处理并已加分,false = 之前已处理过(幂等放行)。
+    const { data: granted, error: rpcErr } = await admin.rpc(
+      "process_stripe_credit",
+      { p_event_id: event.id, p_user_id: userId, p_credits: credits }
+    );
+
+    if (rpcErr) {
+      // 迁移 012 尚未在生产库执行 → 函数不存在。Postgres 报 42883
+      // (undefined_function),PostgREST 包一层报 PGRST202(找不到该 RPC)。
+      // 两个 code 都兜住,回退到旧的"插入去重 + add_credits"路径(不改其语义),
+      // 保证在手动跑 SQL 之前线上照常发积分;同时上报,提醒尽快执行 012。
+      if (rpcErr.code === "42883" || rpcErr.code === "PGRST202") {
+        Sentry.captureMessage(
+          "migration 012 not applied — webhook running on legacy non-atomic path",
+          { level: "warning", extra: { eventId: event.id } }
+        );
+        return await legacyGrant(admin, event.id, userId, credits);
       }
+      // 其它 DB 错(瞬时)→ 500 让 Stripe 重试,不放过这笔。
+      console.error("process_stripe_credit failed:", rpcErr.message);
+      return new Response("DB error", { status: 500 });
+    }
+
+    if (granted === false) {
+      // 该事件之前已处理过(幂等),不重复发分。
+      return new Response("Already processed", { status: 200 });
     }
   }
 
+  return new Response("ok", { status: 200 });
+}
+
+/**
+ * Legacy fallback (pre-012): non-atomic insert-dedupe + add_credits.
+ * Kept ONLY so prod keeps granting credits before migration 012 is run
+ * manually. Once 012 is applied this branch is never taken.
+ */
+async function legacyGrant(
+  admin: ReturnType<typeof getSupabaseAdmin>,
+  eventId: string,
+  userId: string,
+  credits: number
+): Promise<Response> {
+  const { error: dupeErr } = await admin
+    .from("stripe_processed_events")
+    .insert({ event_id: eventId });
+  if (dupeErr) {
+    if (dupeErr.code === "23505") {
+      // unique_violation = already processed, idempotent pass-through.
+      return new Response("Already processed", { status: 200 });
+    }
+    if (dupeErr.code === "42P01") {
+      // stripe_processed_events table missing (migration 009 not applied).
+      // 009 IS confirmed applied in prod, so this should never happen —
+      // fail CLOSED (500) so Stripe retries rather than silently granting
+      // with no idempotency (which risked double-credit on retries).
+      Sentry.captureException(
+        new Error("stripe_processed_events missing — migration 009 not applied"),
+        { extra: { eventId } }
+      );
+      return new Response("DB error", { status: 500 });
+    }
+    // Other (transient) DB error -> 500 so Stripe retries.
+    console.error("idempotency insert failed:", dupeErr.message);
+    return new Response("DB error", { status: 500 });
+  }
+
+  const { error } = await admin.rpc("add_credits", {
+    p_user_id: userId,
+    p_amount: credits,
+  });
+  if (error) {
+    // add_credits failed -> delete the idempotency row so a Stripe retry can
+    // re-process (otherwise these credits are lost forever).
+    await admin.from("stripe_processed_events").delete().eq("event_id", eventId);
+    console.error("add_credits failed in webhook:", error.message);
+    return new Response("DB error", { status: 500 });
+  }
   return new Response("ok", { status: 200 });
 }
