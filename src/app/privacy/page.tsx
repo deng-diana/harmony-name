@@ -11,8 +11,8 @@ export const metadata = {
  *
  * Plain-English, dyslexia-friendly layout: each major section opens with a
  * one-line italic summary, then the detail. Abbreviations are spelled out on
- * first use. Operated by a UK-based individual sole trader; the full legal
- * name is pending confirmation (see TODO(owner) comments).
+ * first use. Operated by Dan Deng, an individual sole trader based in the
+ * United Kingdom.
  */
 
 function Summary({ children }: { children: React.ReactNode }) {
@@ -93,9 +93,8 @@ export default function PrivacyPolicyPage() {
             </p>
             <ul className="list-disc pl-6 space-y-1">
               <li>
-                <strong>Data controller:</strong> an individual sole trader
-                based in the United Kingdom
-                {/* TODO(owner): replace with full legal name after confirmation */}
+                <strong>Data controller:</strong> Dan Deng, an individual sole
+                trader based in the United Kingdom
               </li>
               <li>
                 <strong>Trading name:</strong> HarmonyName
@@ -485,9 +484,8 @@ export default function PrivacyPolicyPage() {
               .
             </p>
             <p>
-              Data controller: an individual sole trader based in the United
-              Kingdom, trading as HarmonyName.
-              {/* TODO(owner): replace with full legal name after confirmation */}
+              Data controller: Dan Deng, an individual sole trader based in the
+              United Kingdom, trading as HarmonyName.
             </p>
           </Section>
         </main>

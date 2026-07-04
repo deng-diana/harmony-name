@@ -15,9 +15,7 @@ export const metadata: Metadata = {
  *  - font-serif bold headings, stone-900 / stone-600 body text
  *  - rounded cards with stone-100 borders
  *
- * NOTE: Operated by a UK-based individual sole trader. The full legal name is
- * pending confirmation; TODO(owner) comments mark the spots where it should be
- * inserted once confirmed.
+ * Operator: Dan Deng, an individual sole trader based in the United Kingdom.
  */
 
 // One reusable section block. The italic summary is the plain-English
@@ -80,11 +78,10 @@ export default function TermsPage() {
             between you and us. They explain the rules for using HarmonyName.
           </p>
           <p>
-            HarmonyName is operated by an individual sole trader based in the
-            United Kingdom (a single person, not a company). Where these Terms
-            say &ldquo;we,&rdquo; &ldquo;us,&rdquo; or &ldquo;our,&rdquo; they
-            mean that sole trader.
-            {/* TODO(owner): replace with full legal name after confirmation */}
+            HarmonyName is operated by Dan Deng, an individual sole trader based
+            in the United Kingdom (a single person, not a company). Where these
+            Terms say &ldquo;we,&rdquo; &ldquo;us,&rdquo; or &ldquo;our,&rdquo;
+            they mean Dan Deng.
           </p>
           <p>
             Please read these Terms carefully. If you do not agree with them,
@@ -392,8 +389,8 @@ export default function TermsPage() {
             </strong>
           </p>
           <p className="text-stone-500 text-sm">
-            Operated by an individual sole trader based in the United Kingdom.
-            {/* TODO(owner): replace with full legal name after confirmation */}
+            Operated by Dan Deng, an individual sole trader based in the United
+            Kingdom.
           </p>
         </Section>
 
