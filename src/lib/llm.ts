@@ -64,7 +64,10 @@ function getDeepSeek(): OpenAI {
     if (!apiKey) throw new Error("DEEPSEEK_API_KEY is not set");
     deepseekClient = new OpenAI({
       apiKey,
-      baseURL: process.env.DEEPSEEK_BASE_URL,
+      // Default to DeepSeek's endpoint. Without this default, a missing
+      // DEEPSEEK_BASE_URL env var silently routes requests to api.openai.com
+      // with the DeepSeek key -> 401 -> rescue tier (observed in prod 2026-07-05).
+      baseURL: process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com",
     });
   }
   return deepseekClient;
