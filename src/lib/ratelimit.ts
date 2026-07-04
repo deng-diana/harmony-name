@@ -15,3 +15,26 @@ export const generateRatelimit = redis
       analytics: false,
     })
   : null;
+
+// Second, IP-keyed limiter for /api/generate. The per-user limiter above does
+// nothing against someone farming many free accounts from one machine (each new
+// account resets the user-id window). This caps bursts per source IP.
+export const generateIpRatelimit = redis
+  ? new Ratelimit({
+      redis,
+      limiter: Ratelimit.slidingWindow(20, "1 h"),
+      prefix: "rl:generate:ip",
+      analytics: false,
+    })
+  : null;
+
+// Checkout limiter: creating Stripe sessions is cheap for us but a good abuse
+// signal to blunt (session spam / card testing). 10 per 10 minutes per user id.
+export const checkoutRatelimit = redis
+  ? new Ratelimit({
+      redis,
+      limiter: Ratelimit.slidingWindow(10, "10 m"),
+      prefix: "rl:checkout",
+      analytics: false,
+    })
+  : null;

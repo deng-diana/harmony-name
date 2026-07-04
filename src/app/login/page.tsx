@@ -16,10 +16,19 @@ export default function LoginPage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // 如果从 /auth/callback 出错跳回来 (?error=oauth),给个友好提示
+  // 登录后去向:只接受【站内相对路径】(必须以单个 "/" 开头,排除 "//" 和 "/\\" 协议相对 URL),
+  // 与 /auth/callback 的服务端校验同一套规则,防开放重定向(钓鱼)。默认回 /app。
+  const [next, setNext] = useState("/app");
+
+  // 如果从 /auth/callback 出错跳回来 (?error=oauth),给个友好提示;并读取合法的 ?next。
   useEffect(() => {
-    if (new URLSearchParams(window.location.search).get("error") === "oauth") {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("error") === "oauth") {
       setError("Google sign-in failed. Please try again.");
+    }
+    const rawNext = params.get("next");
+    if (rawNext && /^\/(?![/\\])/.test(rawNext)) {
+      setNext(rawNext);
     }
   }, []);
 
@@ -30,8 +39,11 @@ export default function LoginPage() {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        // Google 授权后,Supabase 会把用户带着 ?code= 跳回这个地址
-        redirectTo: `${window.location.origin}/auth/callback`,
+        // Google 授权后,Supabase 会把用户带着 ?code= 跳回这个地址;
+        // 带上 ?next 让回调完成后回到原来的去向(callback 服务端会再校验一次)。
+        redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(
+          next
+        )}`,
       },
     });
     // 成功时浏览器会自动跳去 Google,不会执行到下面;只有出错才会
@@ -63,7 +75,7 @@ export default function LoginPage() {
       }
 
       // 关键: refresh() 让 Server Components 重新读取最新登录态
-      router.push("/app");
+      router.push(next);
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");

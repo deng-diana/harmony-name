@@ -8,6 +8,7 @@
  *   - add_credits():    仅 service_role 可调,所以退款必须用 supabaseAdmin
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
+import * as Sentry from "@sentry/nextjs";
 import { getSupabaseAdmin } from "./supabaseAdmin";
 
 export type DeductResult =
@@ -43,7 +44,14 @@ export async function refundCredit(userId: string): Promise<void> {
     p_amount: 1,
   });
   if (error) {
+    // A silently-failed refund is real money owed to the user — never let it vanish
+    // into console-only logs. Escalate to Sentry with the userId so it can be
+    // reconciled manually. (credits.ts is server-only; @sentry/nextjs is safe here.)
     console.error(`Refund failed for user ${userId}:`, error.message);
+    Sentry.captureException(new Error(`Credit refund failed: ${error.message}`), {
+      tags: { operation: "refundCredit" },
+      extra: { userId },
+    });
   }
 }
 

@@ -44,10 +44,10 @@ describe("resolveNamingModel", () => {
     expect(resolveNamingModel()).toBe("claude-sonnet-4-6");
   });
 
-  it("returns 'deepseek-v4-flash' by default when provider is deepseek", () => {
+  it("returns 'deepseek-chat' by default when provider is deepseek (v4 reasoning models are unusable)", () => {
     process.env.NAMING_PROVIDER = "deepseek";
     delete process.env.NAMING_MODEL_DEEPSEEK;
-    expect(resolveNamingModel()).toBe("deepseek-v4-flash");
+    expect(resolveNamingModel()).toBe("deepseek-chat");
   });
 
   it("returns NAMING_MODEL_DEEPSEEK when set and provider is deepseek", () => {
