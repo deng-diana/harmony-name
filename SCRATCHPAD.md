@@ -7,6 +7,62 @@
 
 ---
 
+## 2026-07-05 — expert-audit naming/poetry fix session (branch fix/naming-expert-audit, SHA 5f75e12)
+
+Six-expert audit (3 sinology + 3 design) produced findings across bazi/naming/poetry/UX.
+This session implemented the naming+poetry fixes. BaZi fixes (子时 P0, 从强格 P2, etc.)
+deferred to a separate branch (fix/bazi-expert-audit, independent work).
+
+**What landed (one commit, 12 files, 115 tests green):**
+
+- **P0 celebrity blacklist** — added ~50 modern figures (林丹/姚明/刘翔/章子怡/周杰伦/
+  马云/雷锋/刘德华 + politicians/athletes/scientists) to `name-blacklist.json`.
+  Blocks the 林丹-as-female-name regression from the eval runs. 2-char names only
+  caught in rescue tier (by design — see existing _celebrityNote in the JSON).
+
+- **P0 rescue collapse** — `rescue.ts` now tries **2-char given-name pairs** (tier A)
+  from the pool before falling to single-char (tier B). Pair logic: adjacent chars (or
+  separated by one function word) in the same pool line, ≥1 favourable element, no avoid
+  element, both name-suitable + gender-safe. `orchestrate.ts` also adds a bounded
+  relaxed-imagery composer retry (allowGenderLean=true, 4 candidates) before rescue fires.
+
+- **P1 word-boundary + order** — `verify.ts` now checks that givenChars[] order matches
+  their order in the derived grounded span. Catches reversed harvests like 珠明 (from
+  "明珠" line) that passed the old contiguity check.
+
+- **P1 toponym gate** — `forbiddenGivenNames` extended with shipped offenders: 岳阳/沧海/
+  清淮/烟柳/白玉/潇湘 + major cities/rivers/mountains (洛阳/汴京/金陵/嵩山/泰山 etc.).
+
+- **P1 anti-mode-collapse** — GOLD exemplars moved out of the static system prompts
+  (where they caused parroting: 清泉×5, 松月×3 in eval runs). Now a 12-pair
+  `GOLD_EXEMPLAR_POOL` in composer.ts selects 2 randomly per call via the uncached
+  dynamic block; "do NOT reproduce" instruction added. Critic uses the same pool.
+
+- **P1 sentiment gate** — `isFuneraryPoemTitle()` in `retriever.ts` blocks funerary/
+  mourning poems (招魂/国殇/哀郢/怀沙/哀时命/九思/七谏/九怀/九叹 + regex pattern
+  哀|悲|悼|挽|殇|哭|葬|伤逝) from both retrieval arms in `buildVerifiedPool`.
+
+- **P2 surname gloss** — fixed negative verb glosses in `surnames.ts`: 沈 "To sink" →
+  "A classical Chinese surname, borne by the celebrated Ming painter Shen Zhou";
+  similarly 刘/洪/胡/陈/戴/杜/朱.
+
+- **P2 critic weights** — rebalanced: semantics 20 / modern 12 / element 8 / source 8 /
+  surname 6 / gender 16 / phonetics 16 / imagery 14 (= 100). `CRITIC_WEIGHTS` exported
+  constant; CLAUDE.md rubric synced.
+
+**Tests:** 10 new tests (celebrity blacklist, reverse-order rejection, toponym rejection,
+funerary-title filtering). 115 green total (was 105).
+
+**Deferred (out of scope for this commit, per task brief):**
+- BaZi P0: 子时 split into 晚子时/早子时 UI options (fix/bazi-expert-audit branch)
+- BaZi P2: 从强格, 通根 mid-qi, 调候 priority front-promotion (same branch)
+- Poetry P1: ci dedup by content instead of tune-name+author (scripts/process-poems.py)
+- Poetry P2: citation format enrichment (诗经 chapter/section, ci 词牌+题序)
+- Poetry P2: word-frequency / lexicon validation for harvested 2-char pairs (jieba)
+- char library: dated chars (淑/芳/梓/轩) quarantine, Metal/Fire feminine enrichment
+
+---
+
 ## 2026-07-02 — overnight audit + 8-batch fix session (PR #17, awaiting merge) 🟡 ON BRANCH
 
 A 7-agent audit (architecture / performance / security / stack / product / agentic / gap-check)

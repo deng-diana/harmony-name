@@ -19,11 +19,11 @@ npm run dev        # Next.js dev server (Turbopack)
 npm run build      # Production build
 npm run start      # Serve production build
 npm run lint       # ESLint (eslint-config-next)
-npm test           # vitest run — currently 69 tests across 4 files
+npm test           # vitest run — currently 115 tests across 8 files
 npx tsc            # Type-check only (tsconfig has noEmit)
 ```
 
-Tests live next to source: `src/lib/bazi.test.ts`, `src/lib/namechars.test.ts`, `src/lib/verify.test.ts`. No vitest config file — defaults are fine. Add `*.test.ts` next to the file it covers; pure-logic modules only (no React component tests).
+Tests live next to source: `src/lib/bazi.test.ts`, `src/lib/namechars.test.ts`, `src/lib/verify.test.ts`, `src/lib/retriever.test.ts`, `src/lib/pipeline/rescue.test.ts`. No vitest config file — defaults are fine. Add `*.test.ts` next to the file it covers; pure-logic modules only (no React component tests).
 
 ### Data pipeline (poetry vector DB) — run in order
 
@@ -122,7 +122,7 @@ The core invariant: **"agents for judgment, code for facts."** Fabrication is st
 
 - **Composer (`src/lib/agents/composer.ts`)** — Claude Sonnet 4. System prompt is cached (ephemeral). Takes the BaZi profile + the verified pool (real lines with `chunkId`). Returns 6 candidates, each `{lineId, charSpan, surnameChar, givenChars[], meanings, poeticMeaning, ...}`. It is forbidden from writing any poem title/author/full line. `charSpan` must be a contiguous substring of the cited line and contain all `givenChars` — verified by code.
 - **verifyCandidate (`src/lib/verify.ts`)** — pure deterministic gate, no LLM. Checks: (1) `lineId` is in pool and `charSpan` is a real substring of that line's `chunkText`; (2) every `givenChar` is in the span; non-given chars inside the span are only allowed if they are function words (之/乎/兮/…); (3) blacklists + gender-forbidden + gender-clashing; (4) at least one given char carries a favourable element, none carry an avoid element; (5) tones not all identical for 3-char names. Returns structured `reasons[]` — these are fed back to the Composer as `REVISION FEEDBACK` for the retry round (lightweight evaluator-optimizer).
-- **Critic (`src/lib/agents/critic.ts`)** — Claude Sonnet 4 again, lower temperature. Scores 0–100 with a weighted rubric (gender 18 / phonetics 18 / semantics 17 / poetic source 15 / element 15 / surname harmony 10 / modern aesthetics 7) and may set `accept=false`. It does NOT re-check facts. The orchestrator defends against duplicate/out-of-range/missing `idx` values (last-mile: missing idx → neutral 50, never silently sunk).
+- **Critic (`src/lib/agents/critic.ts`)** — Claude Sonnet 4 again, lower temperature. Scores 0–100 with a weighted rubric (gender 16 / phonetics 16 / semantics 20 / imagery 14 / source 8 / element 8 / surname 6 / modern aesthetics 12; total=100) and may set `accept=false`. Weights rebalanced 2026-07-05 per expert audit: semantics and modern-aesthetics bumped (primary failure modes: noun/scenery names, dated names); element/source trimmed (both already code-gated in verify.ts). The `CRITIC_WEIGHTS` constant in critic.ts is the single source of truth — CLAUDE.md must stay in sync. It does NOT re-check facts. The orchestrator defends against duplicate/out-of-range/missing `idx` values (last-mile: missing idx → neutral 50, never silently sunk).
 - **Always-3 guarantee.** Three rescue tiers if `<3` candidates pass verification: (i) retry the Composer with failure feedback; (ii) widen the pool + force single-char given names; (iii) `rescueDeterministic()` — pure code scans the pool for favourable-element + gender-appropriate chars and pairs them with the surname. The fallback surname is `李` (annotated honestly in `masterComment`) so the API never returns 0 names even when LLM output is unusable.
 - **hydrate() (the citation fill).** Looks up `lineId` in the pool, wraps the given chars with `{}` inside the real `chunkText`, builds `culturalHeritage.source` as `《title》— author (dynasty)`. Anatomy elements come from `elementOfChar()`; pinyin from `pinyinOf()` (pinyin-pro). Nothing here trusts LLM strings for facts.
 

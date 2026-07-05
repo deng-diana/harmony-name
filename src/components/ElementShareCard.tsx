@@ -1,11 +1,19 @@
 "use client";
 
 /**
- * 元素身份分享卡 —— 增长引擎(社交化)。
- * 用户拿到"元素身份"(如 🌲 The Resilient Pine)后,这是最想截图发圈的瞬间。
- * 点 "Share my element" → 一张竖版身份卡 → 截成 PNG → 原生分享 / 下载。
- * 配文自带社交问句 "What element are you?" 形成拉新回环。
+ * ElementShareCard — the element-identity social-share artifact.
+ *
+ * "Share my element" -> a 3:4 portrait card (330x440 px) on dark ink bg:
+ *   - brush hanzi glyph hero (木/火/土/金/水) instead of emoji
+ *   - season · direction chip in gold border
+ *   - archetype title in Noto Serif SC
+ *   - "flow toward" line with hanzi element names
+ *   - footer: "What element are you?" + harmonyname.com
+ *
+ * document.fonts.ready + explicit load() ensure Ma Shan Zheng is rasterized
+ * before html-to-image captures the card — same guard as ShareCard.tsx.
  */
+
 import { useRef, useState } from "react";
 import { Sparkles, Share2, Download, X } from "lucide-react";
 import { ELEMENTS, type Element } from "@/lib/elements";
@@ -30,18 +38,34 @@ export function ShareElementButton({
   const [error, setError] = useState<string | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
 
-  const glyph = ELEMENTS[dayMaster as Element]?.archetypeGlyph ?? "✦";
+  const elementData = ELEMENTS[dayMaster as Element];
+  // archetypeGlyph (emoji) is used in the share text for emoji-friendly surfaces
+  const glyph = elementData?.archetypeGlyph ?? "✦";
+  // hanzi is the brush character rendered in the card itself
+  const hanziGlyph = elementData?.hanzi ?? "";
+  const season = elementData?.season ?? "";
+  const direction = elementData?.direction ?? "";
+
+  // "flow toward" label: hanzi + English name per element (e.g. "木 Wood & 火 Fire")
   const favs = favourableElements
-    .map((e) => `${ELEMENTS[e as Element]?.emoji ?? ""} ${e}`)
+    .map((e) => `${ELEMENTS[e as Element]?.hanzi ?? ""} ${e}`)
     .join(" & ");
   const flowLine = favs ? `I flow toward ${favs}` : archetype.subtitle;
-  const shareText = `${glyph} I'm ${archetype.title}. ${flowLine}. What element are you? ✦`;
+
+  // Share text for the native share sheet: keeps emoji for visual richness in SMS
+  const shareText = `${glyph} I'm ${archetype.title}. ${archetype.subtitle}. What element are you? ✦`;
 
   const capture = async (): Promise<Blob | null> => {
     if (!cardRef.current) return null;
     const { toPng } = await import("html-to-image");
+    // Wait for Ma Shan Zheng CJK slices (unicode-range served fonts) before
+    // capturing so the brush hanzi renders correctly rather than falling back.
+    await document.fonts.ready;
+    await document.fonts
+      .load('1rem "Ma Shan Zheng"', hanziGlyph)
+      .catch(() => {});
     const dataUrl = await toPng(cardRef.current, {
-      pixelRatio: 2,
+      pixelRatio: 3, // 3x -> 990x1320; crisp on retina social feeds
       cacheBust: true,
       backgroundColor: "#1C1917",
     });
@@ -68,8 +92,15 @@ export function ShareElementButton({
         return;
       }
       const file = new File([blob], "my-element.png", { type: "image/png" });
-      if (typeof navigator !== "undefined" && navigator.canShare?.({ files: [file] })) {
-        await navigator.share({ files: [file], text: shareText, url: "https://harmonyname.com" });
+      if (
+        typeof navigator !== "undefined" &&
+        navigator.canShare?.({ files: [file] })
+      ) {
+        await navigator.share({
+          files: [file],
+          text: shareText,
+          url: "https://harmonyname.com",
+        });
       } else {
         download(blob);
       }
@@ -114,40 +145,65 @@ export function ShareElementButton({
             className="flex flex-col items-center gap-4 my-auto"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* ===== 截图目标:竖版身份卡 (3:4) ===== */}
+            {/* ===== Capture target: 3:4 portrait card (330x440) ===== */}
             <div
               ref={cardRef}
-              className="w-[330px] h-[440px] bg-stone-900 flex flex-col items-center justify-between px-8 py-9 text-stone-50"
-              style={{ fontFamily: "Lora, Georgia, serif" }}
+              className="w-[330px] h-[440px] bg-ink flex flex-col items-center justify-between px-8 py-9 text-paper"
             >
-              <div className="text-[11px] font-bold uppercase tracking-[0.3em] text-amber-500/90">
+              {/* Header */}
+              <div className="text-[11px] font-bold uppercase tracking-[0.3em] text-gold">
                 ✦ HarmonyName
               </div>
 
+              {/* Center block */}
               <div className="flex flex-col items-center text-center">
-                <div className="text-7xl mb-4 leading-none">{glyph}</div>
-                <div className="text-[11px] uppercase tracking-[0.25em] text-stone-400 mb-2">
-                  {archetype.subtitle}
-                </div>
-                <div className="text-3xl font-medium tracking-tight mb-4">
+                {/* Brush hanzi hero — replaces the emoji archetypeGlyph */}
+                {hanziGlyph && (
+                  <div
+                    className="font-brush leading-none mb-4 text-paper"
+                    style={{ fontSize: "7rem" }}
+                    lang="zh-Hans"
+                    aria-hidden
+                  >
+                    {hanziGlyph}
+                  </div>
+                )}
+
+                {/* Season · direction chip in a thin gold border */}
+                {(season || direction) && (
+                  <div className="text-[11px] uppercase tracking-[0.25em] text-gold-soft border border-gold/40 px-3 py-0.5 mb-3">
+                    {season}
+                    {season && direction ? " · " : ""}
+                    {direction}
+                  </div>
+                )}
+
+                {/* Archetype title */}
+                <div className="text-3xl font-serif tracking-wide mb-4 text-paper">
                   {archetype.title}
                 </div>
-                <div className="w-10 h-px bg-stone-600 mb-4" />
-                <p className="text-[13px] text-amber-200/90 tracking-wide">
+
+                {/* Gold hairline divider */}
+                <div className="w-10 h-px bg-gold-soft/40 mb-4" />
+
+                {/* "Flow toward" line */}
+                <p className="text-[13px] text-gold-soft tracking-wide">
                   {flowLine}
                 </p>
               </div>
 
+              {/* Footer */}
               <div className="flex flex-col items-center text-center">
-                <p className="text-[12px] text-stone-300 italic mb-2">
+                <p className="text-[12px] text-paper/70 italic mb-2 font-serif">
                   What element are you?
                 </p>
-                <div className="text-[10px] uppercase tracking-[0.2em] text-stone-500">
+                <div className="text-[10px] uppercase tracking-[0.2em] text-paper/40">
                   harmonyname.com
                 </div>
               </div>
             </div>
 
+            {/* ===== Action buttons (outside the captured card) ===== */}
             <div className="flex items-center gap-3">
               <button
                 onClick={handleShare}
@@ -171,6 +227,7 @@ export function ShareElementButton({
                 <X className="w-4 h-4" />
               </button>
             </div>
+
             {error && (
               <p className="text-sm text-red-200 bg-red-900/40 px-4 py-2 rounded-full">
                 {error}

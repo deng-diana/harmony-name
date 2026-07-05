@@ -5,13 +5,17 @@
 export type Element = "Wood" | "Fire" | "Earth" | "Metal" | "Water";
 
 export interface ElementTrait {
-  emoji: string; // 元素图标(用于"flow toward"标签)
-  archetypeGlyph: string; // 身份大图标(分享卡主视觉)
+  emoji: string; // element icon (for "flow toward" labels)
+  archetypeGlyph: string; // identity hero glyph (share card visual)
+  /** Traditional Chinese character for this element — 木/火/土/金/水.
+   *  Rendered in brush font (font-brush) wherever emojis were used as
+   *  display glyphs. */
+  hanzi: string;
   colorHex: string;
   colorName: string;
   direction: string;
   season: string;
-  /** "流向"这个元素能给你什么 —— 用于社交化文案的一句意象。 */
+  /** What flowing toward this element gives you — used in social copy. */
   essence: string;
 }
 
@@ -19,6 +23,7 @@ export const ELEMENTS: Record<Element, ElementTrait> = {
   Wood: {
     emoji: "🌳",
     archetypeGlyph: "🌲",
+    hanzi: "木",
     colorHex: "#3F8F5B",
     colorName: "verdant green",
     direction: "East",
@@ -28,6 +33,7 @@ export const ELEMENTS: Record<Element, ElementTrait> = {
   Fire: {
     emoji: "🔥",
     archetypeGlyph: "🔥",
+    hanzi: "火",
     colorHex: "#D4503E",
     colorName: "crimson",
     direction: "South",
@@ -37,6 +43,7 @@ export const ELEMENTS: Record<Element, ElementTrait> = {
   Earth: {
     emoji: "⛰️",
     archetypeGlyph: "⛰️",
+    hanzi: "土",
     colorHex: "#C99A3B",
     colorName: "amber",
     direction: "Center",
@@ -46,6 +53,7 @@ export const ELEMENTS: Record<Element, ElementTrait> = {
   Metal: {
     emoji: "⚔️",
     archetypeGlyph: "⚔️",
+    hanzi: "金",
     colorHex: "#8E97A3",
     colorName: "silver",
     direction: "West",
@@ -55,6 +63,7 @@ export const ELEMENTS: Record<Element, ElementTrait> = {
   Water: {
     emoji: "🌊",
     archetypeGlyph: "🌊",
+    hanzi: "水",
     colorHex: "#3B6FB5",
     colorName: "deep blue",
     direction: "North",

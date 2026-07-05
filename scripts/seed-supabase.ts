@@ -65,6 +65,10 @@ const FAME2_AUTHORS = new Set([
   // Song masters
   "苏轼", "辛弃疾", "李清照", "陆游", "柳永", "晏殊", "欧阳修",
   "秦观", "周邦彦", "姜夔", "范仲淹", "王安石", "黄庭坚",
+  // Synced with the corpus Tier-1 lists (expert audit 2026-07-05: these were
+  // loaded into the corpus but excluded by the fame floor, wasting the poems)
+  "吴文英", "晏几道", "贺铸", "张先",
+  "王勃", "卢照邻", "张若虚", "李贺", "杜审言", "宋之问",
   // Other dynasties
   "纳兰性德", "屈原", "曹操", "曹植", "陶渊明", "谢灵运",
 ]);

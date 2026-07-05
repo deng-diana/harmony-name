@@ -60,7 +60,9 @@ export interface ScoredPoem {
 //   v2=chunkId 字段;v3=字库重建;v4=008 fame 权重 0.8/0.2(本次审计补 bump)。
 //   v5=010(search_lines_by_chars 加 fame floor)+ 011(search_poem_chunks 权重回 0.7/0.3);
 //     010/011 于 2026-06-18 上线但未 bump(30 天缓存毒化窗口),2026-07-02 补 bump。
-const CACHE_VERSION = "v5";
+//   v6=2026-07-05 语料重建(词牌去重修复找回 ~55% 一线宋词; fame 作者表同步;
+//     丧葬诗情感闸门)—— 旧语料的池子不得在 30 天 Redis 缓存中存活。
+const CACHE_VERSION = "v6";
 const poemCache = new Map<string, ScoredPoem[]>();
 const POEM_CACHE_MAX = 500;
 
@@ -177,6 +179,50 @@ export async function searchPoems(
 const MAX_POOL_LINE_LEN = 34;
 
 /**
+ * Funerary / mourning poem title blacklist — deterministic sentiment gate.
+ *
+ * Traditional Chinese naming practice treats inauspicious source texts as
+ * disqualifying: naming a child from a dirge, lamentation, or death poem
+ * is 大忌 regardless of how bright a single line looks in isolation.
+ * The Critic is structurally blind to this because it only receives the
+ * bare line text (no title/poem context), so this must be a hard code gate.
+ *
+ * Coverage:
+ *   - Specific 楚辞 funerary texts: 招魂/大招 (soul-summoning for the dead),
+ *     国殇 (dirge for war dead), 哀郢/怀沙/悲回风/惜往日 (屈原's exile/death laments;
+ *     怀沙 is traditionally his suicide poem), 哀时命 (庄忌), 九思 Han imitations.
+ *   - Pattern-matched titles containing: 哀/悲/悼/挽/殇/哭/葬/招魂/墓/祭/伤/哭
+ *     (catches mourning poems across all dynasties).
+ *
+ * Note: 楚辞 virtue passages (离骚/九歌/橘颂) are NOT blocked — only the
+ * funerary sub-corpus. The 男楚辞 naming convention draws specifically from
+ * those virtue sections, not from the lament corpus.
+ *
+ * Source: poetry expert audit 2026-07-05 (result.guoxue.poetry.findings[1]).
+ */
+const FUNERARY_POEM_TITLES = new Set<string>([
+  // 楚辞 specific funerary texts
+  "招魂", "大招", "国殇", "哀郢", "怀沙", "悲回风", "惜往日",
+  "哀时命", "九思", "伤时", "哀岁", "逢尤", "悯上", "悼乱",
+  "七谏", "九怀", "九叹",
+  // Other well-known mourning / dirge titles
+  "祭妹文", "祭十二郎文", "吊古战场文",
+]);
+
+/** Pattern-based check for mourning/funerary poem titles. */
+const FUNERARY_TITLE_PATTERN = /哀|悲|悼|挽|殇|哭|葬|招魂|墓|祭文|伤逝/;
+
+/**
+ * Returns true if the poem title indicates a funerary or mourning work that
+ * must not be used as a naming source — regardless of individual line content.
+ */
+export function isFuneraryPoemTitle(title: string): boolean {
+  if (FUNERARY_POEM_TITLES.has(title)) return true;
+  if (FUNERARY_TITLE_PATTERN.test(title)) return true;
+  return false;
+}
+
+/**
  * 按候选字检索:返回真实含【任一】候选字的名句(coverage 越高、越经典越靠前)。
  * 调 006 迁移建的 RPC `search_lines_by_chars`。结果同样缓存(候选字组合有限)。
  */
@@ -232,7 +278,10 @@ export async function buildVerifiedPool(opts: {
   perArm?: number;
   cap?: number;
 }): Promise<ScoredPoem[]> {
-  const perArm = opts.perArm ?? 26; // 略高于 cap:补偿下方"每作者≤4/每诗≤2"配额的损耗,使池仍能填向 cap
+  // 64 (was 26): the long-line quota below discards most recovered Song-ci
+  // lines, so the arms must over-fetch to keep the pool filled to cap with
+  // compact couplets (post-rebuild probe: 26-fetch left the pool at 17/30).
+  const perArm = opts.perArm ?? 64;
   const cap = opts.cap ?? 30;
 
   const [byChars, bySem] = await Promise.all([
@@ -258,6 +307,15 @@ export async function buildVerifiedPool(opts: {
   // 否则王维《山居秋暝》一首就能霸占大半个池子,导致不同命主反复拿到同一组名字。
   const PER_POEM = 2;
   const PER_AUTHOR = 4;
+  // Long-line quota (2026-07-05 corpus rebuild regression fix): the rebuilt
+  // corpus recovered ~580 Song ci whose long, multi-clause lines then dominated
+  // the pool via fame ranking (probe: avg 22 chars, 25/30 lines > 14). The
+  // composer verifiably harvests far fewer word-pairs from long ci lines than
+  // from compact 五言/七言 couplets — eval always-3 dropped 3/8 → 1/8. Cap long
+  // lines to a minority so classic couplets stay the pool's backbone.
+  const LONG_LINE_LEN = 14;
+  const MAX_LONG_LINES = Math.floor((opts.cap ?? 30) * 0.3);
+  let longLines = 0;
   const seen = new Set<number>();
   const poemCount = new Map<string, number>();
   const authorCount = new Map<string, number>();
@@ -266,6 +324,14 @@ export async function buildVerifiedPool(opts: {
     if (p.chunkId == null || seen.has(p.chunkId)) continue;
     const text = p.chunkText || "";
     if (text.length === 0 || text.length > MAX_POOL_LINE_LEN) continue; // 滤掉散文长段
+    if (text.length > LONG_LINE_LEN) {
+      if (longLines >= MAX_LONG_LINES) continue;
+      longLines++;
+    }
+    // Sentiment gate: funerary/mourning poems must not be naming sources.
+    // Traditional practice (大忌) disqualifies dirges, laments, and soul-summoning
+    // texts outright — regardless of how bright an individual line may look.
+    if (isFuneraryPoemTitle(p.title)) continue;
     const pk = `${p.author}《${p.title}》`;
     if ((poemCount.get(pk) ?? 0) >= PER_POEM) continue;
     if ((authorCount.get(p.author) ?? 0) >= PER_AUTHOR) continue;

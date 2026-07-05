@@ -315,9 +315,19 @@ def deduplicate(poems: list[PoemRecord]) -> list[PoemRecord]:
         '宋词名家': 2,
     }
 
+    def content_fingerprint(poem: PoemRecord) -> str:
+        # Normalize away punctuation/whitespace so the SAME poem from two
+        # anthologies (minor punctuation variants) still dedupes, while two
+        # DIFFERENT ci sharing a tune name (e.g. Su Shi's many 浣溪沙) do not.
+        # Expert audit 2026-07-05: the old title|author key collapsed 557 of
+        # 1,017 Tier-1 Song ci (55%) because ci "titles" are tune names.
+        import hashlib
+        normalized = re.sub(r'[^一-鿿]', '', poem['full_content'])
+        return hashlib.md5(normalized.encode('utf-8')).hexdigest()[:12]
+
     seen: dict[str, PoemRecord] = {}
     for poem in poems:
-        key = f"{poem['title']}|{poem['author']}"
+        key = f"{poem['title']}|{poem['author']}|{content_fingerprint(poem)}"
         if key not in seen:
             seen[key] = poem
         else:
