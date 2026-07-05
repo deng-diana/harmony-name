@@ -91,7 +91,8 @@ export async function generateMetadata({
   }
 
   const hanzi = cleanHanzi(name);
-  const title = `${hanzi} — a Chinese name with a real source`;
+  // Writer spec verbatim: "found in a real poem" over "with a real source"
+  const title = `${hanzi} — a Chinese name found in a real poem`;
   const description = `${hanzi} (${name.pinyin}): ${name.poeticMeaning}`;
 
   return {
@@ -141,18 +142,29 @@ export default async function PublicNamePage({
           <div className="text-[11px] font-bold uppercase tracking-[0.3em] text-gold mb-4">
             ✦ HarmonyName
           </div>
-          <h1 className="text-3xl md:text-4xl font-serif font-bold tracking-tight text-ink mb-3">
-            {headingHanzi ? (
-              <>
-                &laquo;{headingHanzi}&raquo; — a Chinese name with a real source
-              </>
-            ) : (
-              "A Chinese name with a real source"
-            )}
+
+          {/* Lead name huge in brush — the name speaks for itself */}
+          {headingHanzi && (
+            <div
+              className="font-brush text-8xl md:text-9xl text-ink text-center leading-none mb-4 animate-reveal"
+              lang="zh-Hans"
+            >
+              {headingHanzi}
+            </div>
+          )}
+
+          {/* Writer spec verbatim: "a name found in a poem" */}
+          <h1 className="text-2xl md:text-3xl font-serif font-bold tracking-tight text-ink mb-3">
+            {headingHanzi
+              ? "— a name found in a poem"
+              : "A Chinese name found in a real poem"}
           </h1>
-          <p className="text-sm text-ink-faint italic">
-            Generated with HarmonyName from the bearer&apos;s birth chart. Every
-            character is traced to a real line of classical poetry.
+
+          {/* Subline — writer spec verbatim */}
+          <p className="text-sm text-ink-faint italic max-w-md mx-auto leading-relaxed">
+            Made with HarmonyName from the bearer&apos;s birth chart. Every
+            character below is traced to a real line of classical Chinese
+            poetry — poet, dynasty, and all.
           </p>
         </header>
 
@@ -163,24 +175,33 @@ export default async function PublicNamePage({
               className="animate-reveal"
               style={{ animationDelay: `${index * 90}ms` }}
             >
-              {/* readOnly: no auth here, hide play/share/save (they need a session) */}
+              {/* readOnly: no auth here; hide play/share/save (they need a session) */}
               <NameCard name={name} index={index} readOnly />
             </div>
           ))}
         </div>
 
-        {/* CTA — the whole point of the public page: convert a viewer into a user */}
+        {/* CTA — the whole point of the public page: convert a viewer into a user.
+            Writer spec verbatim copy. */}
         <div className="text-center mt-16 mb-8 animate-fade-in-up">
           <div className="bg-paper-raised rounded-2xl p-8 md:p-10 shadow-soft border border-mist/70">
+            {/* Cue brush glyph — 缘 (fate / connection) */}
+            <p className="font-brush text-4xl text-gold-soft mb-3" aria-hidden lang="zh-Hans">
+              缘
+            </p>
+            {/* Writer spec verbatim h2 */}
             <h2 className="text-xl md:text-2xl font-serif font-semibold text-ink mb-2">
-              Find YOUR name
+              Your name is in there too.
             </h2>
+            {/* Writer spec verbatim body */}
             <p className="text-ink-soft mb-6">
-              Read from your own birth chart. Your first 3 are free.
+              Somewhere in centuries of classical poetry there&apos;s a name
+              that fits your birth chart. Your first three are free.
             </p>
             <Link href="/app">
+              {/* Writer spec: drop the ALL-CAPS YOUR; possessive is carried by "in there too" */}
               <Button size="lg" className="w-full sm:w-auto">
-                Find YOUR name — first 3 free <ArrowRight className="w-5 h-5" />
+                Find my name — first 3 free <ArrowRight className="w-5 h-5" />
               </Button>
             </Link>
           </div>
