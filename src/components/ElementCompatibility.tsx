@@ -7,51 +7,73 @@ import {
 } from "@/lib/compatibility";
 
 /**
- * "Who you vibe with" —— 把五行相生相克翻译成"你和谁最合拍"。
- * 双轴:关系性质(纯生克,人人相同) × 能量损益(由本人喜忌查表)。所有英文文案集中在本文件。
+ * ElementCompatibility — "how the five elements move around you"
+ *
+ * Museum-redesign (2026-07-05): always visible (no accordion), story-first,
+ * screenshot-shareable. Writer's exact RELATION_COPY and INTRO verbatim.
+ * Energy chips re-tokenised to on-palette design tokens.
  */
 
-// 轴一:关系性质 → 标签 + 一句意象(落点经国学大师校准:食伤="我"输出、财=经营而非掌控)。
-const RELATION_COPY: Record<Relation, { label: string; line: string }> = {
+// ── RELATION COPY (writer spec verbatim — 2026-07-05) ──────────────────────
+// headline = bold second line under the tribe name
+// story = template; {tribe} = tribeName(element) + " people" e.g. "Flame people"
+const RELATION_COPY: Record<Relation, { label: string; headline: string; story: string }> = {
   nourisher: {
     label: "The Nourisher",
-    line: "They pour energy into you — around them you feel supported and replenished.",
+    headline: "They rain on your garden.",
+    story:
+      "You and {tribe} fit the way rain fits a garden: they pour in, and you grow. When you’re running on empty, these are the ones who somehow leave you fuller than they found you.",
   },
   protege: {
     label: "The Protégé",
-    line: "You naturally give to them — they draw out your warmth, ideas, and creativity.",
+    headline: "You’re the rain in this one.",
+    story:
+      "With {tribe}, the current runs from you to them — your ideas, your warmth, your best advice. Notice how alive you feel around them: giving them your light is one of the ways you shine.",
   },
   kindred: {
     label: "The Kindred",
-    line: "Same wavelength — they get you without effort, with a little friendly rivalry.",
+    headline: "Same weather, same wavelength.",
+    story:
+      "You and {tribe} are cut from the same cloth, so nothing needs explaining — you can be quiet together and still be in conversation. Two of a kind will sometimes race each other; kept friendly, the race makes you both faster.",
   },
   challenger: {
     label: "The Challenger",
-    line: "They raise the bar and keep you sharp — friction that forges growth.",
+    headline: "The whetstone.",
+    story:
+      "{tribe} push against you by nature — they question the plan, hold their ground, raise the bar. It costs a little energy, and it’s also exactly how a blade gets sharp.",
   },
   cultivator: {
     label: "The Cultivator",
-    line: "You take the lead and make things happen — you feel capable and resourceful.",
+    headline: "You hold the tools here.",
+    story:
+      "With {tribe}, you’re the one shaping things — you set the direction, they give you something real to work with. It’s where you feel most capable; just garden it gently. Good gardeners tend, they never trample.",
   },
 };
 
-// 轴二:能量损益 chip。costs 用琥珀色而非红色 —— 不渲染"凶"。Balanced 时整体降调。
+// ── INTRO (writer spec verbatim) ────────────────────────────────────────────
+const INTRO =
+  "The five elements move in a circle: each one feeds a neighbor, and each one keeps a neighbor in check — the way rain feeds a pine, and a riverbank holds the river. Neither is bad. Feeding is how things grow; checking is how things take shape. Your chart shows where each kind of person stands on your circle.";
+
+// ── ENERGY CHIPS (on-palette tokens) ───────────────────────────────────────
 function energyChip(energy: Energy, isBalanced: boolean) {
-  const map: Record<Energy, { text: string; soft: string; cls: string }> = {
+  const map: Record<
+    Energy,
+    { text: string; soft: string; cls: string }
+  > = {
     lifts: {
-      text: "Lifts you",
-      soft: "Lightly lifts",
-      cls: "bg-emerald-50 text-emerald-700 border-emerald-200",
+      text: "Recharges you",
+      soft: "Gently lifts",
+      cls: "border-gold-soft bg-gold-soft/15 text-gold",
     },
     easy: {
-      text: "Easy",
-      soft: "Easy",
-      cls: "bg-stone-50 text-stone-500 border-stone-200",
+      text: "Easy company",
+      soft: "Easy company",
+      cls: "border-mist text-ink-soft",
     },
     costs: {
-      text: "Costs you",
+      text: "Costs you energy",
       soft: "Asks a little",
-      cls: "bg-amber-50 text-amber-700 border-amber-200",
+      cls: "border-seal/30 text-seal-soft bg-seal/5",
     },
   };
   const m = map[energy];
@@ -60,6 +82,8 @@ function energyChip(energy: Energy, isBalanced: boolean) {
 
 const tribeName = (el: Element) =>
   ARCHETYPES[el as keyof typeof ARCHETYPES].title.replace(/^The\s+/, "");
+
+const tribePeople = (el: Element) => `${tribeName(el)} people`;
 
 export function ElementCompatibility({
   dayMaster,
@@ -77,60 +101,70 @@ export function ElementCompatibility({
   });
   const { tribes, isBalanced, bestElement, foilElement } = compat;
 
-  const named = (el: Element | null) =>
-    el ? `${ELEMENTS[el].emoji} ${tribeName(el)}` : "";
+  const namedEl = (el: Element | null) =>
+    el ? `${ELEMENTS[el].hanzi} ${tribeName(el)}` : "";
 
-  // 顶部金句 —— 不用 "clash/相克",措辞随平衡局软化。
+  // Summary sentence above the list
   let summary: string;
   if (isBalanced) {
-    summary = `Your elements run balanced — you sit easy with most tribes, with a little extra warmth from ${named(
-      bestElement
-    )} and a touch of spark from ${named(foilElement)}.`;
+    summary = `Your elements run balanced — you sit easy with most tribes, with a little extra warmth from ${namedEl(bestElement)} and a touch of spark from ${namedEl(foilElement)}.`;
   } else {
-    summary = `You're most lifted by ${named(
-      bestElement
-    )}, and most challenged by ${named(foilElement)}.`;
+    summary = `You’re most lifted by ${namedEl(bestElement)}, and most challenged by ${namedEl(foilElement)}.`;
   }
 
   return (
-    <div className="mt-4 rounded-xl border border-stone-200 bg-white p-5 md:p-6">
-      {/* 金句 */}
-      <p className="text-sm md:text-base font-serif text-stone-800 leading-relaxed mb-5">
+    <section className="rounded-2xl border border-mist/70 bg-paper-raised p-6 md:p-7">
+      {/* Section heading */}
+      <h3 className="font-serif text-lg text-ink mb-1">
+        How the five elements move around you
+      </h3>
+
+      {/* Intro — the 相生相克 explainer (writer spec verbatim) */}
+      <p className="text-sm text-ink-soft mb-4 leading-relaxed">{INTRO}</p>
+
+      {/* Summary sentence */}
+      <p className="text-sm md:text-base font-serif text-ink leading-relaxed mb-5">
         {summary}
       </p>
 
-      {/* 五族双轴列表 */}
-      <ul className="space-y-3">
+      {/* Five-tribe list */}
+      <ul className="space-y-4">
         {tribes.map((t) => {
           const rc = RELATION_COPY[t.relation];
           const chip = energyChip(t.energy, isBalanced);
+          const story = rc.story.replace("{tribe}", tribePeople(t.element));
+          const elData = ELEMENTS[t.element];
+
           return (
-            <li
-              key={t.element}
-              className="flex items-start justify-between gap-3"
-            >
-              <div className="flex items-start gap-2.5 min-w-0">
-                <span className="text-xl leading-none mt-0.5 shrink-0">
-                  {ELEMENTS[t.element].archetypeGlyph}
-                </span>
-                <div className="min-w-0">
-                  <p className="text-sm text-stone-800">
-                    <span className="font-semibold">{tribeName(t.element)}</span>
-                    <span className="text-stone-400"> · </span>
-                    <span className="text-amber-700">{rc.label}</span>
-                    {t.isBestMatch && (
-                      <span className="ml-1.5 text-amber-600 font-semibold whitespace-nowrap">
-                        ✦ {isBalanced ? "Most in tune" : "Best match"}
-                      </span>
-                    )}
-                  </p>
-                  <p className="text-xs text-stone-500 leading-relaxed mt-0.5">
-                    {rc.line}
-                  </p>
-                </div>
-              </div>
+            <li key={t.element} className="flex gap-3.5">
+              {/* Brush element hanzi instead of emoji */}
               <span
-                className={`shrink-0 inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-medium border ${chip.cls}`}
+                className="font-brush text-3xl leading-none text-ink w-9 shrink-0 text-center"
+                lang="zh-Hans"
+                aria-label={t.element}
+              >
+                {elData.hanzi}
+              </span>
+
+              <div className="flex-1 min-w-0">
+                <p className="text-sm">
+                  <b>{tribeName(t.element)}</b>
+                  <span className="text-ink-faint"> · </span>
+                  <span className="text-gold">{rc.label}</span>
+                  {t.isBestMatch && (
+                    <span className="ml-1.5 text-gold font-semibold whitespace-nowrap">
+                      ✦ {isBalanced ? "Most in tune" : "Best match"}
+                    </span>
+                  )}
+                </p>
+                {/* Headline in bold, then story in smaller text */}
+                <p className="text-sm font-medium text-ink mt-0.5">{rc.headline}</p>
+                <p className="text-sm text-ink-soft leading-relaxed mt-0.5">{story}</p>
+              </div>
+
+              {/* On-palette energy chip */}
+              <span
+                className={`shrink-0 self-start inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-medium border ${chip.cls}`}
               >
                 {chip.label}
               </span>
@@ -139,20 +173,24 @@ export function ElementCompatibility({
         })}
       </ul>
 
-      {/* 单边视角 —— 诚实交代 + 社交钩子 */}
-      <p className="text-xs text-stone-500 italic leading-relaxed mt-5">
-        ✦ This is the view from <span className="font-medium">your</span> chart —
-        how you&apos;d land in someone else&apos;s is its own story.
+      {/* Single-perspective disclaimer — keep, drop plant emoji */}
+      <p className="text-xs text-ink-soft italic leading-relaxed mt-5">
+        This is the view from <span className="font-medium">your</span> chart
+        — how you&apos;d land in someone else&apos;s is its own story.
       </p>
 
-      {/* 免责声明(克制、得体,不让人觉得"全是假的") */}
-      <p className="text-[11px] text-stone-400 leading-relaxed mt-2">
+      <p className="text-[11px] text-ink-faint leading-relaxed mt-2">
         Read this as the <em>energetic undertone</em> between you and each
         element — drawn from just your core day-element, a playful, stripped-down
         take on classical Chinese compatibility. Real people are a whole chart,
         far richer than one element — two &ldquo;Fire&rdquo; souls can be worlds
-        apart. Trust it a little, smile, and let real life decide the rest. 🌱
+        apart. Trust it a little, smile, and let real life decide the rest.
       </p>
-    </div>
+
+      {/* Attribution whisper for screenshots */}
+      <div className="text-center text-[10px] tracking-[0.25em] uppercase text-ink-faint pt-5">
+        ✦ harmonyname.com
+      </div>
+    </section>
   );
 }

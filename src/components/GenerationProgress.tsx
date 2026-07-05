@@ -46,13 +46,13 @@ interface GenerationProgressProps {
   narrative?: string[];
 }
 
-// Wrap runs of Chinese characters (poem titles/authors/names, incl. 《》 brackets)
-// in a serif span tagged lang="zh-Hans" so they render with the right font/shaping;
-// English prose stays in the default sans face.
+// Wrap runs of CJK characters (poem titles/authors/names, incl. 《》 brackets)
+// in a Noto Serif SC span tagged lang="zh-Hans" for correct font selection and
+// glyph shaping. English prose stays in the default Lora body face.
 function renderNarrativeLine(text: string) {
   return text.split(/([㐀-鿿《》]+)/g).map((part, i) =>
     /[㐀-鿿《》]/.test(part) ? (
-      <span key={i} lang="zh-Hans" className="font-serif">
+      <span key={i} lang="zh-Hans" className="font-hanzi">
         {part}
       </span>
     ) : (
@@ -125,6 +125,15 @@ export function GenerationProgress({
 
   return (
     <div className="py-12 px-8 bg-paper-raised rounded-2xl border border-mist/70 shadow-soft">
+      {/* Brush 名 — a small calligraphic mark of ceremony above the progress bar */}
+      <div
+        className="font-brush text-4xl text-gold-soft text-center mb-6 animate-pulse"
+        aria-hidden
+        lang="zh-Hans"
+      >
+        名
+      </div>
+
       {/* Thin progress bar; ink fill + ease-soft; shimmer overlay while running to feel alive */}
       <div className="relative w-full bg-mist rounded-full h-1 mb-10 overflow-hidden">
         <div

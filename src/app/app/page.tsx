@@ -10,6 +10,7 @@ import {
   ARCHETYPES,
   type BaziResult,
 } from "@/lib/bazi";
+import { ELEMENTS } from "@/lib/elements";
 import type { CommonSurname } from "@/lib/surnames";
 import type { ApiResponse, City } from "@/types";
 import {
@@ -361,14 +362,21 @@ export default function Home() {
 
     return (
       <div className="min-h-screen bg-paper py-12 px-4 sm:px-6 font-sans text-ink">
-        <main className="mx-auto max-w-6xl lg:grid lg:grid-cols-2 lg:gap-16 lg:items-start">
-          {/* LEFT — your destiny archetype; sticky beside the scrolling names on desktop */}
+        {/* Asymmetric grid: identity panel 5fr, names 7fr — names are the artifact */}
+        <main className="mx-auto max-w-6xl lg:grid lg:grid-cols-[5fr_7fr] lg:gap-16 lg:items-start">
+          {/* LEFT — identity panel; sticky on desktop beside the scrolling names */}
           <div className="space-y-8 lg:sticky lg:top-10 lg:self-start animate-fade-in-up">
             <header className="text-center">
               <h1 className="text-3xl md:text-4xl font-bold font-serif tracking-tight text-ink mb-3">
-                You are the {baziResult.dayMaster} Archetype
+                You are the{" "}
+                {/* Day-master rendered as brush hanzi — the museum move */}
+                <span className="font-brush text-gold" lang="zh-Hans">
+                  {ELEMENTS[baziResult.dayMaster as keyof typeof ELEMENTS]?.hanzi}
+                </span>{" "}
+                {baziResult.dayMaster} Archetype
               </h1>
-              <div className="text-[11px] md:text-xs text-ink-faint font-mono uppercase tracking-wide mb-1">
+              {/* Meta string: small, dot-separated, no font-mono (dashboard feel) */}
+              <div className="text-xs text-ink-faint uppercase tracking-wide mb-1">
                 {metaString}
               </div>
               <p className="text-xs text-ink-faint/80 italic">
@@ -379,9 +387,17 @@ export default function Home() {
             <DestinyCard baziResult={baziResult} />
           </div>
 
-          {/* RIGHT — the Master's name selection; scrolls beside the sticky left */}
+          {/* RIGHT — name cards; scrolls beside the sticky left */}
           <div className="mt-16 lg:mt-0 lg:border-l lg:border-mist lg:pl-16">
             <div className="text-center mb-10">
+              {/* Small brush ornament above the heading — a quiet mark of ceremony */}
+              <div
+                className="font-brush text-3xl text-gold-soft mb-2"
+                aria-hidden
+                lang="zh-Hans"
+              >
+                名
+              </div>
               <h2 className="text-2xl md:text-3xl font-serif font-bold text-ink">
                 Master&apos;s Selection
               </h2>
@@ -397,7 +413,7 @@ export default function Home() {
             )}
 
             {error && (
-              <div className="text-center text-red-600 p-8 bg-white rounded-xl border border-red-100">
+              <div className="text-center text-red-600 p-8 bg-paper-raised rounded-xl border border-red-100">
                 {error}
               </div>
             )}
@@ -422,7 +438,7 @@ export default function Home() {
 
             <div className="grid gap-8">
               {aiData?.names?.map((name, index) => (
-                // 揭晓时刻:三个名字逐个"显形"(淡入+上浮+极轻放大),每张错峰 90ms。
+                // Name reveal: three cards emerge with a 90ms stagger.
                 <div
                   key={index}
                   className="animate-reveal"
@@ -444,21 +460,25 @@ export default function Home() {
               ))}
             </div>
 
-            {/* Post-reveal share moment — celebrate the top-ranked name once the
-                cards have revealed. Reuses the ShareCard modal machinery. */}
+            {/* Post-reveal celebration strip — writer spec verbatim (2026-07-05) */}
             {!isNamesLoading && aiData?.names?.[0] && (
               <div
                 className="animate-reveal flex flex-col items-center gap-3 pt-12"
                 style={{ animationDelay: `${aiData.names.length * 90 + 120}ms` }}
               >
-                <p className="text-ink-soft font-serif text-lg">Share your name</p>
+                <p className="font-serif text-lg text-ink">
+                  Found in a poem. Worn by you.
+                </p>
+                <p className="text-sm text-ink-soft text-center max-w-xs">
+                  Your name waited centuries in that line — show someone where it lives.
+                </p>
                 <ShareNameButton
                   name={aiData.names[0]}
                   archetype={
                     ARCHETYPES[baziResult.dayMaster as keyof typeof ARCHETYPES]
                   }
                   shareUrl={shareUrl}
-                  label="Share your name"
+                  label="Share my name"
                 />
               </div>
             )}
@@ -494,25 +514,25 @@ export default function Home() {
 
   // --- FORM VIEW ---
   return (
-    <div className="min-h-screen bg-stone-50 flex flex-col items-center py-12 px-4 sm:px-6 font-sans">
+    <div className="min-h-screen bg-paper flex flex-col items-center py-12 px-4 sm:px-6 font-sans">
       <div className="text-center max-w-2xl mx-auto mb-10">
-        <h1 className="text-4xl font-bold text-stone-900 sm:text-5xl font-serif mb-4">
+        <h1 className="text-4xl font-bold text-ink sm:text-5xl font-serif mb-4">
           HarmonyName
         </h1>
-        <p className="text-stone-600">
+        <p className="text-ink-soft">
           Authentic Chinese naming through BaZi wisdom.
         </p>
       </div>
 
-      <div className="w-full max-w-md bg-white p-8 rounded-3xl shadow-xl border border-stone-100">
+      <div className="w-full max-w-md bg-paper-raised p-8 rounded-3xl shadow-soft border border-mist/70">
         {/* Date */}
         <div className="mb-6">
-          <label className="block text-xs font-bold text-stone-900 uppercase tracking-wide mb-2">
+          <label className="block text-xs font-bold text-ink uppercase tracking-wide mb-2">
             Date of Birth
           </label>
           <input
             type="date"
-            className="w-full px-4 py-3 bg-white border border-stone-200 rounded-xl text-stone-900 focus:ring-2 focus:ring-stone-900 focus:border-transparent outline-none transition-colors duration-200 ease-soft"
+            className="w-full px-4 py-3 bg-paper border border-mist rounded-xl text-ink focus:ring-2 focus:ring-ink focus:border-transparent outline-none transition-colors duration-200 ease-soft"
             value={birthDate}
             onChange={(e) => setBirthDate(e.target.value)}
           />
@@ -528,12 +548,12 @@ export default function Home() {
 
         {/* Time */}
         <div className="mb-6">
-          <label className="block text-xs font-bold text-stone-900 uppercase tracking-wide mb-2">
+          <label className="block text-xs font-bold text-ink uppercase tracking-wide mb-2">
             Time of Birth
           </label>
           <div className="relative">
             <select
-              className="w-full px-4 py-3 bg-white border border-stone-200 rounded-xl text-stone-900 focus:ring-2 focus:ring-stone-900 outline-none appearance-none"
+              className="w-full px-4 py-3 bg-paper border border-mist rounded-xl text-ink focus:ring-2 focus:ring-ink outline-none appearance-none"
               value={birthTime}
               onChange={(e) => setBirthTime(e.target.value)}
             >
@@ -543,7 +563,7 @@ export default function Home() {
                 </option>
               ))}
             </select>
-            <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-stone-400">
+            <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-ink-faint">
               &#9660;
             </div>
           </div>
@@ -551,7 +571,7 @@ export default function Home() {
 
         {/* Gender */}
         <div className="mb-8">
-          <label className="block text-xs font-bold text-stone-900 uppercase tracking-wide mb-2">
+          <label className="block text-xs font-bold text-ink uppercase tracking-wide mb-2">
             Gender
           </label>
           <div className="flex gap-3">
@@ -562,8 +582,8 @@ export default function Home() {
                 onClick={() => setGender(g)}
                 className={`flex-1 py-3 rounded-xl border text-sm font-bold transition-colors duration-200 ease-soft ${
                   gender === g
-                    ? "border-stone-900 bg-stone-50 ring-2 ring-stone-900 text-stone-900"
-                    : "border-stone-200 text-stone-500 hover:border-stone-300"
+                    ? "border-ink bg-mist/30 ring-2 ring-ink text-ink"
+                    : "border-mist text-ink-soft hover:border-ink-faint"
                 }`}
               >
                 {g === "male" ? "Male" : "Female"}
