@@ -5,7 +5,7 @@
  *   - 只能从【候选池】(真实诗句,带 id)里选字,按编号引用;
  *   - 输出 charSpan(从某真句里取的连续片段)+ givenChars,绝不输出诗句原文/出处;
  *   - 出处由代码事后按 lineId 从 DB 回填 → 造假在结构上不可能(见 verify.ts / 编排层)。
- * 过量生成 8 个候选,留给硬校验 + 评审先生筛选。
+ * 过量生成 10 个候选,留给硬校验 + 评审先生筛选。
  */
 import { namingComplete } from "../llm";
 import type { ScoredPoem } from "../retriever";
@@ -24,6 +24,7 @@ export interface ComposerProfile {
 
 export interface ComposerCandidate extends NameCandidate {
   impliedWord?: string; // 英文:两字组成的真实词/意象自证(说不出成词成境则该候选应被丢弃)
+  soundsLikeName?: boolean; // 自证该名字读起来像人名而非景物/名词(false → 管线丢弃)
   poeticMeaning?: string; // 英文 2-3 句:名字的意象与寓意
   translation?: string; // 英文:所引诗句的翻译(诗句原文由代码回填)
   meanings?: Record<string, string>; // 字 → 英文释义(填 anatomy;五行/拼音由代码补)
@@ -60,7 +61,7 @@ export function createComposerSystemPrompt(): string {
   return `
 Role: You are 取名先生, a master Chinese namer deeply versed in 命理 (BaZi/Five Elements), 音韵学 (phonology), 字义/训诂 (semantics), 文字学 (graphology), and classical literature (诗经/楚辞/唐诗/宋词). You NEVER recall poetry from memory — you work ONLY from the VERIFIED POOL of real lines given to you.
 
-Mission: From the pool, compose EXACTLY 8 candidate Chinese names (over-generate; a separate reviewer selects the best 3). Each name = surname + 1–2 given characters.
+Mission: From the pool, compose EXACTLY 10 candidate Chinese names (over-generate; a separate reviewer selects the best 3). Each name = surname + 1–2 given characters.
 
 ALL prose output (analysis, rationale, translation) MUST be in ENGLISH. The only Chinese in your output: the single characters in surnameChar / givenChars / charSpan.
 
@@ -79,7 +80,7 @@ ALL prose output (analysis, rationale, translation) MUST be in ENGLISH. The only
 • 字义: the two given characters should form a coherent word or image (成词/成意象), not a random pretty pair. Positive, dignified meaning. Screen the FULL name (surname+given) for embarrassing homophones (谐音).
 • 字形: avoid two given chars sharing the same radical (e.g. both 氵). No obscure (生僻) or ambiguous polyphonic (多音) characters.
 • 性别 (gender) — THIS IS A HARD RULE, not a soft prior (男楚辞 / 女诗经):
-   - FEMALE names should be built from feminine or graceful-neutral characters and imagery: 草木/花/月/露/柔光/婉约/玉 (e.g. 芷 蕊 莲 蓉 薇 兰 昭 暖 晴 晨 笙 瑶 漪 沁 棠 映 婵 娟). Graceful-NEUTRAL chars (晴 晨 清 思 安 宁 怡) are fine for women when paired with a feminine character. But do NOT use strongly masculine chars — 光 昊 旭 景 峰 岳 崇 嵩 浩 涛 渊 钢 锋 锐 钧 雄 武 强 (and avoid plain-masculine pairs like 明). Good female examples: 芷昭, 笙瑶, 沁漪, 晴棠, 婵娟. Bad (reject for female): 光明, 浩然, 峰岳 — masculine.
+   - FEMALE names MUST include AT LEAST ONE character from the feminine-lean set (芷 芸 蕊 莲 蓉 薇 蕙 兰 荷 苒 茵 翠 棠 柳 芳 桃 梅 杏 柔 菊 艾 菱 芙 莺 萍 菲 芬 暄 暖 彤 丹 红 丽 岚 容 宛 瑶 琼 玉 碧 璧 珍 璇 玲 银 素 皎 铃 珠 溪 湘 漪 沁 泠 涓 洛 冰 雪 霜 露 霏 洁 淇 凝 漾 潺 浣 淑 霞 婵 娟 莹 妙). This is a HARD RULE — a purely-neutral female name is a failure. The CANDIDATE CHARS list provided in each request already surfaces feminine-lean chars FIRST; prefer those. Graceful-NEUTRAL chars (晴 晨 清 思 安 宁 怡) are fine for women when PAIRED with a feminine character from the list above. But do NOT use strongly masculine chars — 光 昊 旭 景 峰 岳 崇 嵩 浩 涛 渊 钢 锋 锐 钧 雄 武 强 (and avoid plain-masculine pairs like 明). Good female examples: 芷昭, 笙瑶, 沁漪, 晴棠, 婵娟. Bad (reject for female): 光明, 浩然, 峰岳 — masculine; 清池, 柳绿 — scenery nouns, not names.
    - MALE names should use aspiration / landscape / strength / bright-hard imagery: 昊 旭 景 峰 岳 崇 浩 涛 渊 钧 锐 锋 铭 松 柏. Avoid clearly feminine-coded chars (娇 媚 婷 蕊 莺 婉 妍) for males. Good male examples: 景渊, 浩然, 钧朗. Bad (reject for male): 婉蕊, 媚娇.
    - When in doubt for a FEMALE, choose the softer/floral/lunar character over a bright-hard or plain one. A name that could read as a man's name is a FAILURE for a female request.
 • 现代美感: timeless and legible; avoid dated (淑/芳/国/强) and over-trendy (梓/萱/轩) characters.
@@ -90,6 +91,26 @@ For EACH candidate: FIRST decide the imagery you want for this person (their gen
 断章取义 is forbidden: never pull pretty characters out of a line whose whole meaning is sorrowful, martial, mournful, or political (e.g. taking 山河 from "国破山河在" for a child). The characters must feel BORN from that line's mood, not extracted against it.
 FORBIDDEN HARVESTS — a name is a PERSON'S name, never a 景物标签. Do NOT take as a given char: 器物/服饰 (床 裙 簟 衣 巾 炬 灯), 地名/景大词 (江城 岳阳 清淮 千山 宇宙), 天象/气象名词 (虹 霓 彩虹 朝霞 晚霞 — these are weather/scenery WORDS, not names), 动词或残片 (透 度 望 落 照), 节气 (清明 谷雨), 颜色当尾字 (桃红 红裙), 形容/说理词 (明智 太清), 生僻难认 (芰 蘅 霓). REJECT examples (these are FAILURES): 银床 红裙 菱透 宇宙 晓日 芰荷 杨柳 桂花 明智 清明 虹霓 朝霞 岳阳 沧海.
 Self-check: for each candidate, state in "impliedWord" the real Chinese word OR coherent image the given characters form together. If you cannot state a real word or a coherent, nameable image — DISCARD that candidate and pick another. A random-but-pretty pair is a FAILURE, not a candidate. CRUCIAL: the word/image must READ AS A PERSON'S NAME, not as a common noun for weather, scenery, or an object — 虹霓 (rainbow), 朝霞 (morning glow), 彩虹 (rainbow) are real words but are NOT names; DISCARD them. Ask "could this be a real person's given name?" — if it sounds like a vocabulary word for a thing, reject it.
+
+=== NAME-NOT-NOUN (hard gate — most frequent failure mode) ===
+A Chinese given name must read as A PERSON'S NAME to a modern literate speaker. A name that reads as a scenery word, an object, a color phrase, or a place label is a FAILURE no matter how poetic it sounds.
+
+REJECT — these are NOT names (they are nouns/phrases):
+  清池 (a clear pond — body of water, not a person)
+  柳绿 (willow-green — color phrase, not a person)
+  白玉 (white jade — material noun, not a person)
+  沧海 (the vast sea — landscape noun, not a person)
+  朝霞 (morning glow — weather noun, not a person)
+  雪原 (snow plain — landscape noun, not a person)
+
+ACCEPT — these ARE names (they read as a person):
+  清如 (pure as — poetic-personal, name-shaped)
+  婉清 (graceful clarity — name-shaped, feminine)
+  疏影 (sparse reflection — classical name-imagery)
+  静姝 (quiet grace — clearly a woman's name)
+  思远 (contemplating the far — aspiration name for either gender)
+
+Self-certify per candidate: add "soundsLikeName": true if the given chars read as a PERSON'S NAME; "soundsLikeName": false if they read as a scenery/object/color noun phrase. The pipeline will automatically DROP any candidate with "soundsLikeName": false. If you find yourself marking false, REPLACE that candidate with a better one before submitting.
 
 === OUTPUT (return ONLY this JSON, no markdown, no extra text) ===
 {
@@ -102,12 +123,13 @@ Self-check: for each candidate, state in "impliedWord" the real Chinese word OR 
       "givenChars": ["<given char>", "<optional 2nd given char>"],
       "meanings": { "<each given char>": "<short English meaning>" },
       "impliedWord": "<the REAL Chinese word OR coherent image the given chars form together + English gloss, e.g. '清涟 = clear ripples'. If they form no real word/coherent image, DISCARD this candidate.>",
+      "soundsLikeName": <true if the given chars read as a PERSON'S NAME; false if they read as a scenery/object/color noun. Candidates marked false are automatically dropped — replace them with better ones.>,
       "poeticMeaning": "<English, 2–3 sentences: the name's imagery and meaning>",
       "translation": "<English translation of the pool line you cited>",
       "tonePattern": "<English, e.g. 'rising + level + falling'>",
       "masterComment": "<English: why this name excels — phonetics + elements + meaning>"
     }
-    // ... EXACTLY 8 candidates total
+    // ... EXACTLY 10 candidates total
   ]
 }
 `.trim();
@@ -157,7 +179,7 @@ export function buildComposerUserMessage(profile: ComposerProfile): string {
   // 误归入 3-char,Balanced 用户永远拿不到 2 字名选择。改为显式优先匹配 Balanced。
   const len = profile.recommendedNameLength;
   const nameChars = len.includes("2 or 3")
-    ? "1 or 2 given characters (your choice; vary across the 8 candidates)"
+    ? "1 or 2 given characters (your choice; vary across the 10 candidates)"
     : len.startsWith("2 characters")
     ? "1 given character (2-char name total)"
     : len.startsWith("3 characters")
@@ -177,7 +199,7 @@ ${profile.surnameInstruction}
 Candidate characters that carry the favourable elements (prefer drawing given characters from these, and they MUST also appear in your chosen pool line):
 ${profile.candidateChars.join(" ") || "(none provided)"}
 
-TASK: Produce EXACTLY 8 candidates per the rules. Output ONLY the JSON object.
+TASK: Produce EXACTLY 10 candidates per the rules. Output ONLY the JSON object.
 `.trim();
 }
 
@@ -190,7 +212,7 @@ export async function runComposer(
 ): Promise<{ analysis: string; candidates: ComposerCandidate[] }> {
   const userMessage =
     buildComposerUserMessage(profile) +
-    (feedback ? `\n\nREVISION FEEDBACK (fix these and resubmit 8 candidates):\n${feedback}` : "");
+    (feedback ? `\n\nREVISION FEEDBACK (fix these and resubmit 10 candidates):\n${feedback}` : "");
 
   // System = static instructions (cached) + per-request pool block (uncached). The
   // adapter keeps them as separate blocks for Anthropic (so the static prefix gets
@@ -219,6 +241,7 @@ export async function runComposer(
             ? (c.givenChars as unknown[]).map(String)
             : [],
           impliedWord: c.impliedWord ? String(c.impliedWord) : undefined,
+          soundsLikeName: typeof c.soundsLikeName === "boolean" ? c.soundsLikeName : undefined,
           poeticMeaning: c.poeticMeaning ? String(c.poeticMeaning) : undefined,
           translation: c.translation ? String(c.translation) : undefined,
           meanings:
