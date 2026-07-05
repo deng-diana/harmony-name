@@ -2,14 +2,19 @@
  * /n/[slug]/opengraph-image — dynamic social-share card (1200x630)
  * ================================================================
  * The image a shared /n/<slug> link unfurls to on X / iMessage / WhatsApp etc.
- * Dark ink-paper aesthetic: the name's hanzi LARGE in serif, pinyin + the poem
- * line beneath, brand mark bottom-right.
+ * Dark ink-paper aesthetic: the name's hanzi LARGE in brush calligraphy
+ * (Ma Shan Zheng), pinyin + poem line in Noto Serif SC beneath it.
  *
- * Chinese glyphs need a real CJK font — the default satori fonts have no hanzi.
- * We fetch a SUBSETTED Noto Serif SC from Google Fonts (only the glyphs we
- * render), which keeps the download tiny. The whole thing is wrapped so it can
- * NEVER 500: any failure (DB miss, font fetch, render) falls back to a
- * text-only card, and a missing row falls back to a generic brand card.
+ * Font loading strategy (both fonts use the same css2 subset technique):
+ *   loadGoogleFont("Ma+Shan+Zheng", hanzi)       -- brush display for the name
+ *   loadGoogleFont("Noto+Serif+SC:wght@400", ...) -- reading-size CJK + Latin
+ * Each request is subset-fetched with only the glyphs we actually render,
+ * keeping the per-render download tiny (a name + poem line = tens of KB).
+ *
+ * Never 500s: any failure (DB miss, either font fetch, render crash) falls
+ * back gracefully — name falls back to Noto Serif SC, all fonts absent falls
+ * back to satori's default font (tofu for hanzi, but a valid image), and a
+ * missing DB row shows a generic brand card.
  */
 import { ImageResponse } from "next/og";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
@@ -24,9 +29,12 @@ const CREAM = "#FDFBF7"; // paper
 const GOLD = "#C9A24B";
 const MUTED = "#a8a29e";
 
-/** Fetch a subsetted Google font as an ArrayBuffer (TTF). Vercel's documented
- * pattern: the css2 endpoint returns truetype for a server-side fetch, which
- * satori can parse. Throws on failure so the caller can fall back. */
+/**
+ * Fetch a subsetted Google font as an ArrayBuffer (TTF).
+ * The css2 endpoint returns a truetype src when fetched server-side, which
+ * satori (the renderer behind next/og) can parse. Throws on failure so the
+ * caller can degrade gracefully rather than hard-erroring.
+ */
 async function loadGoogleFont(
   family: string,
   text: string
@@ -70,8 +78,6 @@ export default async function Image({
 }: {
   params: Promise<{ slug: string }> | { slug: string };
 }) {
-  // params may be a promise (page routes) or a plain object (image routes);
-  // awaiting a non-promise just returns it, so this is safe either way.
   const { slug } = await params;
   const result = await getResult(slug);
   const name = result?.names?.[0] ?? null;
@@ -82,26 +88,46 @@ export default async function Image({
     ? stripBraces(name.culturalHeritage.original)
     : "";
 
-  // Everything CJK we need to render → the font subset request.
-  const cjkText = `${hanzi}${poemLine}名有其源和谐取名`;
+  // Glyphs needed for the reading-size elements (Noto Serif SC subset)
+  const notoText = `${poemLine}名有其源和谐取名`;
 
-  let fonts: { name: string; data: ArrayBuffer; weight: 400 | 700 }[] = [];
+  // Font registry: brush for the large name display, noto for everything else.
+  // Each is attempted independently; partial success still beats all-fallback.
+  type FontEntry = { name: string; data: ArrayBuffer; weight: 400 | 700 };
+  const fonts: FontEntry[] = [];
+
+  // Ma Shan Zheng — brush-written kaishu for the big name display.
+  // Only weight 400 is available for Ma Shan Zheng.
   try {
-    const [bold, regular] = await Promise.all([
-      loadGoogleFont("Noto+Serif+SC:wght@700", cjkText),
-      loadGoogleFont("Noto+Serif+SC:wght@400", cjkText),
-    ]);
-    fonts = [
-      { name: "Noto Serif SC", data: bold, weight: 700 },
-      { name: "Noto Serif SC", data: regular, weight: 400 },
-    ];
+    const brushData = await loadGoogleFont("Ma+Shan+Zheng", hanzi);
+    fonts.push({ name: "Ma Shan Zheng", data: brushData, weight: 400 });
   } catch {
-    // Font fetch failed → render with satori's default font. Hanzi may show as
-    // tofu boxes, but the route still returns a valid image (never 500s).
-    fonts = [];
+    // Brush font failed — fall back to Noto Serif SC for the name block.
   }
 
-  const fontFamily = fonts.length ? "Noto Serif SC" : "serif";
+  // Noto Serif SC — museum-caption serif for pinyin and poem line.
+  try {
+    const notoData = await loadGoogleFont(
+      "Noto+Serif+SC:wght@400",
+      notoText
+    );
+    fonts.push({ name: "Noto Serif SC", data: notoData, weight: 400 });
+  } catch {
+    // Noto failed — hanzi in the poem line may render as tofu boxes,
+    // but the route still returns a valid image (never 500s).
+  }
+
+  // Name renders in brush if the font loaded; falls back to noto or satori default.
+  const nameFontFamily =
+    fonts.some((f) => f.name === "Ma Shan Zheng")
+      ? "Ma Shan Zheng"
+      : fonts.some((f) => f.name === "Noto Serif SC")
+        ? "Noto Serif SC"
+        : "serif";
+
+  const bodyFontFamily = fonts.some((f) => f.name === "Noto Serif SC")
+    ? "Noto Serif SC"
+    : "serif";
 
   try {
     return new ImageResponse(
@@ -115,23 +141,24 @@ export default async function Image({
             justifyContent: "space-between",
             backgroundColor: BG,
             padding: "70px 80px",
-            fontFamily,
+            fontFamily: bodyFontFamily,
           }}
         >
-          {/* brand mark */}
+          {/* Brand mark */}
           <div
             style={{
               fontSize: 24,
               letterSpacing: 8,
               textTransform: "uppercase",
               color: GOLD,
-              fontWeight: 700,
+              fontWeight: 400,
+              fontFamily: bodyFontFamily,
             }}
           >
             HARMONYNAME
           </div>
 
-          {/* the name */}
+          {/* Name block — brush calligraphy at 160px */}
           <div
             style={{
               display: "flex",
@@ -142,17 +169,23 @@ export default async function Image({
           >
             <div
               style={{
-                fontSize: 200,
+                fontSize: 160,
                 lineHeight: 1,
                 color: CREAM,
-                fontWeight: 700,
+                fontWeight: 400,
+                fontFamily: nameFontFamily,
               }}
             >
               {hanzi}
             </div>
             {pinyin ? (
               <div
-                style={{ fontSize: 40, color: MUTED, marginTop: 24 }}
+                style={{
+                  fontSize: 40,
+                  color: MUTED,
+                  marginTop: 24,
+                  fontFamily: bodyFontFamily,
+                }}
               >
                 {pinyin}
               </div>
@@ -165,14 +198,15 @@ export default async function Image({
                   fontStyle: "italic",
                   marginTop: 28,
                   maxWidth: 900,
+                  fontFamily: bodyFontFamily,
                 }}
               >
-                “{poemLine}”
+                &ldquo;{poemLine}&rdquo;
               </div>
             ) : null}
           </div>
 
-          {/* footer */}
+          {/* Footer */}
           <div
             style={{
               display: "flex",
@@ -180,6 +214,7 @@ export default async function Image({
               fontSize: 26,
               letterSpacing: 2,
               color: MUTED,
+              fontFamily: bodyFontFamily,
             }}
           >
             harmonyname.com
