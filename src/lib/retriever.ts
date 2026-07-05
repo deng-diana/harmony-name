@@ -60,7 +60,9 @@ export interface ScoredPoem {
 //   v2=chunkId 字段;v3=字库重建;v4=008 fame 权重 0.8/0.2(本次审计补 bump)。
 //   v5=010(search_lines_by_chars 加 fame floor)+ 011(search_poem_chunks 权重回 0.7/0.3);
 //     010/011 于 2026-06-18 上线但未 bump(30 天缓存毒化窗口),2026-07-02 补 bump。
-const CACHE_VERSION = "v5";
+//   v6=2026-07-05 语料重建(词牌去重修复找回 ~55% 一线宋词; fame 作者表同步;
+//     丧葬诗情感闸门)—— 旧语料的池子不得在 30 天 Redis 缓存中存活。
+const CACHE_VERSION = "v6";
 const poemCache = new Map<string, ScoredPoem[]>();
 const POEM_CACHE_MAX = 500;
 
