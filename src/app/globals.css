@@ -1,59 +1,86 @@
 @import "tailwindcss";
 
 /* =====================================================================
-   设计令牌 (design tokens) —— 全站单一真相来源。改一处,全站生效。
-   Tailwind v4 @theme:这里定义的令牌会自动生成工具类:
-     --color-paper → bg-paper/text-paper/border-paper
-     --ease-soft   → ease-soft
-     --animate-reveal → animate-reveal
-   美学保持原有"水墨暖色"(宣纸底 + 墨色字 + 暖金印章点缀),只是系统化。
+   Design tokens — single source of truth for the whole site. One change
+   here propagates everywhere. Tailwind v4 @theme auto-generates utilities:
+     --color-paper  →  bg-paper / text-paper / border-paper
+     --font-brush   →  font-brush
+     --ease-soft    →  ease-soft
+   Aesthetic: warm ink-landscape (xuan paper ground + ink text + gold accent).
    ===================================================================== */
 @theme {
-  /* —— 品牌色板(语义命名,不再散落 stone-900/amber-xxx)—— */
-  --color-paper: #fdfbf7;        /* 宣纸底色:页面背景 */
-  --color-paper-raised: #ffffff; /* 抬起面:卡片背景 */
-  --color-ink: #1c1917;          /* 墨色:主文字(≈stone-900) */
-  --color-ink-soft: #57534e;     /* 淡墨:次要文字(≈stone-600) */
-  --color-ink-faint: #a8a29e;    /* 远墨:占位/辅助(≈stone-400) */
-  --color-mist: #e7e5e4;         /* 雾色:描边/分隔(≈stone-200) */
-  --color-gold: #b08d57;         /* 暖金:印章/重点点缀 */
-  --color-gold-soft: #d9c5a0;    /* 浅金:柔和强调 */
+  /* —— Brand palette (semantic names; no more scattered stone-*/amber-*) —— */
+  --color-paper: #fdfbf7;        /* xuan-paper ground: page background */
+  --color-paper-raised: #ffffff; /* raised surface: card background */
+  --color-ink: #1c1917;          /* ink: primary text (≈ stone-900) */
+  --color-ink-soft: #57534e;     /* soft ink: secondary text (≈ stone-600) */
+  --color-ink-faint: #a8a29e;    /* faint ink: placeholder/helper (≈ stone-400) */
+  --color-mist: #e7e5e4;         /* mist: borders/dividers (≈ stone-200) */
+  --color-gold: #b08d57;         /* warm gold: seal accent */
+  --color-gold-soft: #d9c5a0;    /* pale gold: soft emphasis */
 
-  /* —— 动效缓动曲线(senior motion:克制、自然减速,少量弹性)—— */
-  --ease-soft: cubic-bezier(0.22, 1, 0.36, 1);      /* 优雅减速(揭晓/入场首选) */
-  --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);  /* 轻微回弹(点击/勾选微动) */
+  /* —— Cinnabar seal red — 印泥 red, desaturated toward paper warmth.
+        Use at most ONCE per view (the seal stamp, an active mark, or a save
+        heart). Scarcity keeps it dignified. NOT #ff0000 festival red. —— */
+  --color-seal: #9e2b25;
+  --color-seal-soft: #b8433c;
 
-  /* —— 入场/微交互动画 —— */
+  /* —— CJK typefaces —— */
+  /* Ma Shan Zheng: brush-written kaishu — the 毛笔 display face for hanzi.
+     --font-brush-gf is set on <body> by next/font (Ma_Shan_Zheng).
+     The Tailwind utility 'font-brush' resolves via that body variable.
+     System kaiti fallbacks ensure graceful degradation. */
+  --font-brush: var(--font-brush-gf), "Kaiti SC", "KaiTi", serif;
+
+  /* Noto Serif SC: museum-caption serif for reading-size Chinese
+     (poem lines, poet names, titles). Source Han Serif by Adobe/Google.
+     --font-hanzi-gf is set on <body> by next/font (Noto_Serif_SC). */
+  --font-hanzi: var(--font-hanzi-gf), "Songti SC", "SimSun", serif;
+
+  /* —— Easing curves (restrained, natural deceleration with light spring) —— */
+  --ease-soft: cubic-bezier(0.22, 1, 0.36, 1);      /* elegant deceleration */
+  --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);  /* light rebound */
+
+  /* —— Entrance / micro-interaction animations —— */
   --animate-fade-in: fade-in var(--dur-slow) var(--ease-soft) both;
   --animate-fade-in-up: fade-in-up var(--dur-slow) var(--ease-soft) both;
   --animate-reveal: reveal var(--dur-reveal) var(--ease-soft) both;
 }
 
-/* —— 动效时长(语义化,统一节奏;供 transition/animation 复用)—— */
+/* —— Animation durations (semantic; shared across transition/animation) —— */
 :root {
-  --dur-fast: 150ms;   /* 微交互:颜色/透明度 */
-  --dur-base: 250ms;   /* 标准:位移/缩放 */
-  --dur-slow: 450ms;   /* 入场 */
-  --dur-reveal: 650ms; /* 名字揭晓(更舒展) */
+  --dur-fast: 150ms;   /* micro-interactions: color/opacity */
+  --dur-base: 250ms;   /* standard: translate/scale */
+  --dur-slow: 450ms;   /* entrance */
+  --dur-reveal: 650ms; /* name reveal (wider arc) */
 }
 
-/* 修复:旧 body{font-family:Arial} 把 layout 设的 Lora 衬线字体整个覆盖了
-   (全站本应是优雅的 Lora,却显示成 Arial)。删除该覆盖,让 Lora 正常生效。
-   layout.tsx 已把 lora.className 挂到 body,这里只补抗锯齿与文本渲染优化。 */
+/* Body text rendering — let Lora from layout.tsx take effect; only
+   add anti-aliasing and legibility here. */
 body {
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
 
-/* nextjs dev portal 定位修正(保留) */
+/* nextjs dev portal position fix */
 nextjs-portal {
   left: unset;
   top: unset;
 }
 
 /* =====================================================================
-   动效工具类 —— 统一替代散落的 transition-all(反模式)。
-   只过渡【该过渡的属性】(颜色/形变/透明度),不碰布局,避免重排卡顿。
+   CJK typography helpers — per W3C clreq / Bobby Tung best practices.
+   Chinese running text needs line-height 1.7-1.9 (Latin-tuned 1.5 is
+   too tight for CJK density). Never letter-space Chinese body text.
+   ===================================================================== */
+.text-cjk {
+  line-height: 1.8;
+}
+
+/* =====================================================================
+   Transition utilities — replace scatter transition-all (anti-pattern
+   that animates layout → jank). Only transition the properties that
+   should transition.
    ===================================================================== */
 .transition-soft {
   transition-property: color, background-color, border-color, opacity, box-shadow, transform;
@@ -66,7 +93,7 @@ nextjs-portal {
   transition-duration: var(--dur-fast);
 }
 
-/* —— 自定义阴影(暖色柔光,作为令牌复用)—— */
+/* —— Shadows (warm gold-tinted softbox, reused as design tokens) —— */
 .shadow-soft {
   box-shadow: 0 2px 8px rgba(176, 141, 87, 0.12), 0 4px 16px rgba(176, 141, 87, 0.08);
 }
@@ -75,7 +102,7 @@ nextjs-portal {
 }
 
 /* =====================================================================
-   关键帧
+   Keyframes
    ===================================================================== */
 @keyframes fade-in {
   from { opacity: 0; }
@@ -85,12 +112,12 @@ nextjs-portal {
   from { opacity: 0; transform: translateY(12px); }
   to { opacity: 1; transform: translateY(0); }
 }
-/* 名字揭晓:淡入 + 上浮 + 极轻微放大,像从纸面"显形"。 */
+/* Name reveal: fade-in + float-up + tiny scale, like emerging from the page. */
 @keyframes reveal {
   from { opacity: 0; transform: translateY(16px) scale(0.985); }
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
-/* 加载占位的"微光扫过"(skeleton shimmer)。 */
+/* Loading placeholder shimmer sweep. */
 @keyframes shimmer {
   from { background-position: -180% 0; }
   to { background-position: 180% 0; }
@@ -100,13 +127,13 @@ nextjs-portal {
 .animate-fade-in-up { animation: var(--animate-fade-in-up); }
 .animate-reveal { animation: var(--animate-reveal); }
 
-/* 入场错峰延迟(配合 scroll/揭晓做 stagger) */
+/* Staggered entry delays (for scroll / reveal stagger effects) */
 .delay-100 { animation-delay: 0.1s; }
 .delay-200 { animation-delay: 0.2s; }
 .delay-300 { animation-delay: 0.3s; }
 .delay-500 { animation-delay: 0.5s; }
 
-/* skeleton 微光条 */
+/* Skeleton shimmer bar */
 .shimmer {
   background-image: linear-gradient(
     100deg,
@@ -119,7 +146,9 @@ nextjs-portal {
 }
 
 /* =====================================================================
-   无障碍:尊重"减少动态效果"系统偏好 —— 一律降级为无动画/瞬时过渡。
+   Accessibility: honour the prefers-reduced-motion system preference —
+   collapse all animation to near-instant. One kill-switch for the whole
+   site; never disable it for individual components.
    ===================================================================== */
 @media (prefers-reduced-motion: reduce) {
   *,

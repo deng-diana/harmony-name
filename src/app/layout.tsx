@@ -1,18 +1,39 @@
 import type { Metadata } from "next";
-// 1. 引入 Google 的 Lora 字体
-import { Lora } from "next/font/google";
+import { Lora, Ma_Shan_Zheng, Noto_Serif_SC } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 
-// 2. 配置 Lora
-// subsets: ['latin'] 是必须的
-// variable: 给它起个 CSS 变量名，方便在 Tailwind 里用（虽然我们这里直接用 className）
+// Latin body serif — unchanged; provides the foundational text face.
 const lora = Lora({
   subsets: ["latin"],
-  weight: ["400", "500", "600", "700"], // 加载这些粗细度
-  style: ["normal", "italic"], // 支持斜体（你的诗句引用需要斜体）
+  weight: ["400", "500", "600", "700"],
+  style: ["normal", "italic"],
   variable: "--font-lora",
-  display: "swap", // 字体没加载完前先显示系统字体，防止白屏
+  display: "swap",
+});
+
+// Brush-written kaishu — the 毛笔 display face for hanzi at large sizes.
+// preload:false is required for CJK Google Fonts (100+ unicode-range slices;
+// the browser fetches only the glyph slices it actually renders — a name + one
+// poem line ≈ 2-4 slices). Ma Shan Zheng is the only Google Fonts CJK that
+// reads as dignified calligraphy rather than casual script.
+const brush = Ma_Shan_Zheng({
+  weight: "400",
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-brush-gf",
+  preload: false,
+});
+
+// Museum-caption serif for reading-size Chinese (poem lines, poet names, titles).
+// Noto Serif SC is the Adobe/Google co-developed Source Han Serif — the only
+// free CJK serif with genuine multi-weight dignity.
+const hanziSerif = Noto_Serif_SC({
+  weight: ["400", "600"],
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-hanzi-gf",
+  preload: false,
 });
 
 const SITE_DESCRIPTION =
@@ -26,7 +47,7 @@ export const metadata: Metadata = {
   },
   description: SITE_DESCRIPTION,
   icons: {
-    icon: "/icon.png", // 确保你把 logo 复制并改名为 icon.png 放在 src/app/ 下
+    icon: "/icon.png",
   },
   openGraph: {
     type: "website",
@@ -50,15 +71,15 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
+    // lang="en" is correct — UI prose is English; individual hanzi spans carry
+    // lang="zh-Hans" to ensure correct glyph variants.
     <html lang="en">
-      {/* 3. 把字体应用到全身 */}
-      {/* lora.className: 应用字体 */}
-      {/* antialiased: 让字体边缘更平滑（抗锯齿），看起来更高级 */}
-      <body className={`${lora.className} antialiased bg-[#FDFBF7] text-stone-900`}>
+      <body
+        className={`${lora.className} ${brush.variable} ${hanziSerif.variable} antialiased bg-paper text-ink`}
+      >
         {children}
         <Analytics />
       </body>
     </html>
   );
 }
-
