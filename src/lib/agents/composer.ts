@@ -32,6 +32,29 @@ export interface ComposerCandidate extends NameCandidate {
   rescueNote?: string; // 内部:确定性救援的诚实标注(系统兜底姓/放宽性别),critic 覆盖 masterComment 时须保留追加
 }
 
+/**
+ * A pool of 12 GOLD exemplar given-name pairs (成词成象、像真名).
+ * Two are selected randomly per call and injected into the uncached dynamic
+ * block — this prevents the model from anchoring on a fixed set and parroting
+ * the same names (e.g. 清泉×5 / 松月×3 observed in evals when these were
+ * hard-coded in the static system prompt). The static prompt now describes the
+ * PATTERN, not specific names. Kept here so the same pool drives both the
+ * Composer and Critic prompts consistently.
+ *
+ * Anti-mode-collapse fix: expert audit 2026-07-05 (naming finding #5).
+ */
+export const GOLD_EXEMPLAR_POOL: [string, string][] = [
+  ["芷", "昭"], ["笙", "瑶"], ["沁", "漪"], ["晴", "棠"],
+  ["景", "渊"], ["钧", "朗"], ["云", "澄"], ["岫", "晴"],
+  ["思", "远"], ["韵", "涵"], ["曦", "和"], ["怀", "玉"],
+];
+
+/** Pick n distinct exemplars at random from the pool. */
+function sampleExemplars(n: number): [string, string][] {
+  const shuffled = [...GOLD_EXEMPLAR_POOL].sort(() => Math.random() - 0.5);
+  return shuffled.slice(0, n);
+}
+
 // 静态系统提示(可缓存的前缀)—— 取名先生的全部专业知识。
 export function createComposerSystemPrompt(): string {
   return `
@@ -46,8 +69,9 @@ ALL prose output (analysis, rationale, translation) MUST be in ENGLISH. The only
 2. For each candidate you MUST return "lineId" = the id of the pool line you took the characters from, and "charSpan" = the TIGHTEST contiguous substring of that exact line text containing ONLY your given chars (optionally with one intervening function word — see rule 6). Do NOT copy the whole line or clause. Example: line "松月生夜凉" with given chars 松月 → charSpan MUST be "松月", NOT "松月生夜凉".
 3. Every character in "givenChars" MUST appear inside your "charSpan".
 4. You output NO poem text, NO source/title/author, NO full line — only lineId + charSpan + the chars. (The system fills the real citation from the database.)
-5. Prefer a charSpan that is a meaningful 2-character word/image occurring contiguously in one line (e.g. 明月, 松月, 青溪, 清涟) — this is the gold standard (又真又美). (Do NOT use 清明 — it reads as the 节气/Tomb-Sweeping festival.)
+5. Prefer a charSpan that is a meaningful 2-character word/image occurring contiguously in one line — this is the gold standard (又真又美). (Do NOT use 清明 — it reads as the 节气/Tomb-Sweeping festival.)
 6. The two given characters need NOT be directly adjacent: your charSpan MAY include ONE intervening FUNCTION WORD (之/而/以/兮/于…) which you then DROP from givenChars — e.g. charSpan "清之涟" → givenChars ["清","涟"] → name 清涟. ONLY a function word may be skipped (never a content character). Keep the span tight (≤ 8 characters).
+7. ORDERING RULE: the order of givenChars[] MUST match the order the characters appear in the cited line. Do NOT reverse them (e.g. if the line reads "明珠", your givenChars must be ["明","珠"], never ["珠","明"]).
 
 === NAMING CRAFT (make names 讲究 and natural, never weird) ===
 • 五行: at least one given character must carry a FAVOURABLE element; NEVER use a character of an AVOID element. Use the CANDIDATE CHARS list as a guide to which characters carry the favourable elements.
@@ -56,7 +80,7 @@ ALL prose output (analysis, rationale, translation) MUST be in ENGLISH. The only
 • 字形: avoid two given chars sharing the same radical (e.g. both 氵). No obscure (生僻) or ambiguous polyphonic (多音) characters.
 • 性别 (gender) — THIS IS A HARD RULE, not a soft prior (男楚辞 / 女诗经):
    - FEMALE names should be built from feminine or graceful-neutral characters and imagery: 草木/花/月/露/柔光/婉约/玉 (e.g. 芷 蕊 莲 蓉 薇 兰 昭 暖 晴 晨 笙 瑶 漪 沁 棠 映 婵 娟). Graceful-NEUTRAL chars (晴 晨 清 思 安 宁 怡) are fine for women when paired with a feminine character. But do NOT use strongly masculine chars — 光 昊 旭 景 峰 岳 崇 嵩 浩 涛 渊 钢 锋 锐 钧 雄 武 强 (and avoid plain-masculine pairs like 明). Good female examples: 芷昭, 笙瑶, 沁漪, 晴棠, 婵娟. Bad (reject for female): 光明, 浩然, 峰岳 — masculine.
-   - MALE names should use aspiration / landscape / strength / bright-hard imagery: 昊 旭 景 峰 岳 崇 浩 涛 渊 钧 锐 锋 铭 松 柏. Avoid clearly feminine-coded chars (娇 媚 婷 蕊 莺 婉 妍) for males. Good male examples: 景渊, 浩然, 松柏, 钧朗. Bad (reject for male): 婉蕊, 媚娇.
+   - MALE names should use aspiration / landscape / strength / bright-hard imagery: 昊 旭 景 峰 岳 崇 浩 涛 渊 钧 锐 锋 铭 松 柏. Avoid clearly feminine-coded chars (娇 媚 婷 蕊 莺 婉 妍) for males. Good male examples: 景渊, 浩然, 钧朗. Bad (reject for male): 婉蕊, 媚娇.
    - When in doubt for a FEMALE, choose the softer/floral/lunar character over a bright-hard or plain one. A name that could read as a man's name is a FAILURE for a female request.
 • 现代美感: timeless and legible; avoid dated (淑/芳/国/强) and over-trendy (梓/萱/轩) characters.
 • 入诗不入名: NEVER use function words / particles that merely scan in a poem (之, 乎, 者, 也, 兮, 矣, 焉, 其, 而, 谁, 莫 …) or inauspicious characters, even if they appear in a pool line.
@@ -64,7 +88,7 @@ ALL prose output (analysis, rationale, translation) MUST be in ENGLISH. The only
 === PROCESS (think before you pick — this is what makes names 自然 vs 硬凑) ===
 For EACH candidate: FIRST decide the imagery you want for this person (their gender + favourable element), THEN find a pool line whose OVERALL MOOD matches that imagery, THEN take the characters from it. Do NOT scan the pool for any line that merely CONTAINS a favourable character and harvest it — that produces lifeless, "borrowed-not-born" names.
 断章取义 is forbidden: never pull pretty characters out of a line whose whole meaning is sorrowful, martial, mournful, or political (e.g. taking 山河 from "国破山河在" for a child). The characters must feel BORN from that line's mood, not extracted against it.
-FORBIDDEN HARVESTS — a name is a PERSON'S name, never a 景物标签. Do NOT take as a given char: 器物/服饰 (床 裙 簟 衣 巾 炬 灯), 地名/景大词 (江城 千山 宇宙), 天象/气象名词 (虹 霓 彩虹 朝霞 晚霞 — these are weather/scenery WORDS, not names), 动词或残片 (透 度 望 落 照), 节气 (清明 谷雨), 颜色当尾字 (桃红 红裙), 形容/说理词 (明智 太清), 生僻难认 (芰 蘅 霓). REJECT (these are FAILURES): 银床 红裙 菱透 宇宙 晓日 芰荷 杨柳 桂花 明智 清明 虹霓 朝霞. GOLD (成词成象、像真名): 松月 清泉 青溪 明月 晓露 月华.
+FORBIDDEN HARVESTS — a name is a PERSON'S name, never a 景物标签. Do NOT take as a given char: 器物/服饰 (床 裙 簟 衣 巾 炬 灯), 地名/景大词 (江城 岳阳 清淮 千山 宇宙), 天象/气象名词 (虹 霓 彩虹 朝霞 晚霞 — these are weather/scenery WORDS, not names), 动词或残片 (透 度 望 落 照), 节气 (清明 谷雨), 颜色当尾字 (桃红 红裙), 形容/说理词 (明智 太清), 生僻难认 (芰 蘅 霓). REJECT examples (these are FAILURES): 银床 红裙 菱透 宇宙 晓日 芰荷 杨柳 桂花 明智 清明 虹霓 朝霞 岳阳 沧海.
 Self-check: for each candidate, state in "impliedWord" the real Chinese word OR coherent image the given characters form together. If you cannot state a real word or a coherent, nameable image — DISCARD that candidate and pick another. A random-but-pretty pair is a FAILURE, not a candidate. CRUCIAL: the word/image must READ AS A PERSON'S NAME, not as a common noun for weather, scenery, or an object — 虹霓 (rainbow), 朝霞 (morning glow), 彩虹 (rainbow) are real words but are NOT names; DISCARD them. Ask "could this be a real person's given name?" — if it sounds like a vocabulary word for a thing, reject it.
 
 === OUTPUT (return ONLY this JSON, no markdown, no extra text) ===
@@ -92,7 +116,14 @@ Self-check: for each candidate, state in "impliedWord" the real Chinese word OR 
 const fameLabel = (n: number): string =>
   n >= 3 ? "⭐经典" : n >= 2 ? "⭐名家" : "";
 
-// 候选池块(每次请求不同,不缓存)。
+/**
+ * 候选池块(每次请求不同,不缓存)。
+ * Also injects 2 randomly-sampled GOLD exemplars from the pool (not hardcoded
+ * in the static prompt) to prevent mode-collapse / exemplar-parroting.
+ * The "do NOT reproduce" instruction ensures the model uses them as pattern
+ * calibration only, not as literal name templates.
+ * Anti-mode-collapse fix: expert audit 2026-07-05 (naming finding #5).
+ */
 export function buildPoolBlock(pool: ScoredPoem[]): string {
   const lines = pool
     .map(
@@ -102,7 +133,18 @@ export function buildPoolBlock(pool: ScoredPoem[]): string {
         )} "${p.chunkText}"`
     )
     .join("\n");
-  return `=== VERIFIED POOL (the ONLY lines you may use; reference by id) ===\n${lines}`;
+
+  // Sample 2 exemplars per call to calibrate quality WITHOUT anchoring.
+  const exemplars = sampleExemplars(2)
+    .map(([a, b]) => `${a}${b}`)
+    .join(", ");
+  const antiAnchor = [
+    `=== CALIBRATION EXEMPLARS (quality pattern only — do NOT copy these given-name pairs verbatim into any candidate) ===`,
+    `Good given-name pairs look like: ${exemplars}. Use these to understand the STYLE (成词成象, natural, timeless), then find your OWN distinct pairs from the pool above.`,
+    `IMPORTANT: Do NOT output any candidate whose givenChars exactly match the exemplar pairs listed above.`,
+  ].join("\n");
+
+  return `=== VERIFIED POOL (the ONLY lines you may use; reference by id) ===\n${lines}\n\n${antiAnchor}`;
 }
 
 // 用户消息(本次命主信息 + 任务)。

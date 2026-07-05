@@ -168,6 +168,33 @@ export function verifyCandidate(
         reasons.push(
           `givenChars 在所引诗句中无紧邻通路(中夹了实字,不成词)`
         );
+      } else if (c.givenChars.length >= 2) {
+        // ①c Order check: givenChars must appear in the derived span in the SAME
+        // relative order as declared in givenChars[]. A reversed pair (e.g. givenChars
+        // ["珠","明"] but the line reads "明珠") is order-inverted — the resulting name
+        // would harvest chars against their natural reading direction, producing
+        // non-words like 珠明 (correct direction is 明珠). Pure deterministic check.
+        const spanChars = [...groundedSpan];
+        // Find the first position of each given char inside the derived span.
+        const positions: number[] = [];
+        const consumed = new Map<string, number>(); // track usage for duplicate chars
+        for (const ch of c.givenChars) {
+          const startSearch = consumed.get(ch) ?? 0;
+          const pos = spanChars.findIndex(
+            (sc, idx) => sc === ch && idx >= startSearch
+          );
+          positions.push(pos);
+          consumed.set(ch, pos + 1);
+        }
+        // Verify positions are strictly increasing (same order as givenChars[]).
+        const orderOk = positions.every(
+          (p, i) => i === 0 || p > positions[i - 1]
+        );
+        if (!orderOk) {
+          reasons.push(
+            `给定字顺序与原诗句颠倒(「${c.givenChars.join("")}」在句中应为「${c.givenChars.slice().sort((a, b) => line.chunkText.indexOf(a) - line.chunkText.indexOf(b)).join("")}」顺序)`
+          );
+        }
       }
       // If non-null: a valid tight window exists — the span check passes.
       // The canonical charSpan will be normalised in the pipeline's passing() helper.

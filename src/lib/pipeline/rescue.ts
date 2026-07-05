@@ -1,23 +1,99 @@
 /**
- * Deterministic 兜底 —— 不调 LLM,纯代码从候选池里找"喜用神 + 性别合宜"的单字,
- * 与姓配 2 字名(姓+1)。仅在 LLM 多轮兜底后仍 <3 时启动 —— 保证 always-3。
- * 抽成独立纯模块(不引 retriever/composer 的 API 客户端),便于零成本确定性单测。
+ * Deterministic fallback — no LLM, pure code scans the pool for
+ * name-suitable chars grounded in real lines.
  *
- * 分级放宽(graded relaxation):硬不变量始终保留 —— 接地(出自真句)/ 硬黑名单 /
- * 硬性别禁用(雄霸猛…)/ 非忌神五行 / 不与姓同字。仅"软性别倾向"按需逐级放宽,
- * 直到凑够 needed:
- *   ① 喜用神 + 软性别合宜(默认,绝大多数命盘到此为止)
- *   ② 喜用神 + 放宽软性别(名字略偏阳,但仍出自真诗、五行正确;如实在点评中标注)
- *   ③ 病态兜底(几乎不触发):非忌神 + 放宽软性别
+ * Tier order (always-3 guarantee):
+ *   A) Two-char given names from the pool (preferred — 2024 registry data
+ *      shows double given names outnumber singles 25:1; a bare 姓+1 rescue
+ *      name reads anomalous). Pairs two chars from the SAME pool line where:
+ *      - at least one carries a favourable element
+ *      - both are name-suitable and pass gender checks
+ *      - together they form a valid 2-given-char candidate per verifyCandidate
+ *   B) Single-char given names (fallback when A exhausts the pool).
+ *      Annotated honestly in masterComment.
+ *
+ * Grade relaxation across both tiers (hardest invariants never relax):
+ *   Pass ①: favourable element + gender-lean OK
+ *   Pass ②: favourable element + gender-lean relaxed (allowGenderLean)
+ *   Pass ③: non-avoid element + gender-lean relaxed (pathological fallback)
+ *
+ * Two-char pairing logic (expert audit 2026-07-05, naming finding #2):
+ *   Scan each pool line for pairs of distinct name-suitable chars where at
+ *   least one carries a favourable element and neither carries an avoid
+ *   element. The pair must appear as adjacent chars (or separated by a
+ *   single function word) so the resulting name is grounded. We pass the
+ *   pair through verifyCandidate to enforce all remaining hard rules.
  */
-import { verifyCandidate, type VerifyContext } from "../verify";
+import { deriveGroundedSpan, verifyCandidate, type VerifyContext } from "../verify";
 import {
   elementOfChar,
   isGenderForbidden,
   isHardBlacklisted,
   isNameSuitable,
+  isFunctionWord,
 } from "../namechars";
 import type { ComposerCandidate } from "../agents/composer";
+
+// ---------------------------------------------------------------------------
+// Two-char combination helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Scan a single pool line for valid 2-char given-name pairs.
+ * A pair (a, b) is valid when:
+ *   - Both chars appear in the line with at most one function word between them
+ *     (same "tight window" rule as deriveGroundedSpan)
+ *   - At least one of {a, b} carries a favourable element, neither carries an avoid
+ *   - Neither is hard-blacklisted or gender-forbidden
+ *   - Both are name-suitable
+ *   - a ≠ b and neither equals the surname
+ */
+function twoCharPairsFromLine(
+  lineText: string,
+  surnameChar: string,
+  ctx: VerifyContext,
+  elementFilter: (el: string | undefined, el2: string | undefined) => boolean
+): Array<[string, string, string]> { // [char1, char2, groundedSpan]
+  const pairs: Array<[string, string, string]> = [];
+  const chars = [...lineText];
+
+  for (let i = 0; i < chars.length; i++) {
+    const a = chars[i];
+    if (!isNameSuitable(a)) continue;
+    if (isHardBlacklisted(a)) continue;
+    if (ctx.gender && isGenderForbidden(a, ctx.gender)) continue;
+    if (a === surnameChar) continue;
+
+    // Try adjacent (j = i+1) and function-word-gapped (j = i+2 when chars[i+1] is a function word).
+    const jCandidates: number[] = [];
+    if (i + 1 < chars.length) jCandidates.push(i + 1);
+    if (i + 2 < chars.length && isFunctionWord(chars[i + 1])) jCandidates.push(i + 2);
+
+    for (const j of jCandidates) {
+      const b = chars[j];
+      if (!isNameSuitable(b)) continue;
+      if (isHardBlacklisted(b)) continue;
+      if (ctx.gender && isGenderForbidden(b, ctx.gender)) continue;
+      if (b === surnameChar) continue;
+      if (b === a) continue; // no repeated chars
+
+      const elA = elementOfChar(a);
+      const elB = elementOfChar(b);
+      if (!elementFilter(elA, elB)) continue;
+
+      // Verify using the tight-window derivation so we get a real span.
+      const span = deriveGroundedSpan(lineText, [a, b]);
+      if (!span) continue;
+
+      pairs.push([a, b, span]);
+    }
+  }
+  return pairs;
+}
+
+// ---------------------------------------------------------------------------
+// Main export
+// ---------------------------------------------------------------------------
 
 export function rescueDeterministic(
   surnameChar: string,
@@ -27,6 +103,9 @@ export function rescueDeterministic(
 ): ComposerCandidate[] {
   if (needed <= 0 || !surnameChar) return [];
   const out: ComposerCandidate[] = [];
+  // usedChars tracks ALL individual characters used in any candidate's givenChars
+  // so that no single character is repeated across candidates (invariant required by
+  // tests and name-quality: overlapping chars would make names feel non-distinct).
   const usedChars = new Set<string>();
   const fallbackNote = isFallbackSurname
     ? " (System-assigned surname; the AI did not converge on a candidate this round.)"
@@ -34,27 +113,120 @@ export function rescueDeterministic(
   const relaxedNote =
     " (Element-led fallback — the most fitting grounded characters for this rare chart lean slightly yang.)";
 
-  // 本兜底层【按设计产出单字名】(姓+1),故所有 pass 都关掉 requireTwoGivenChars,
-  // 否则生产 ctx 上的"强制双字名"会把这里自己的单字候选全拒掉 → always-3 落空。
+  // Base ctx: turn off requireTwoGivenChars so this module can produce both
+  // 2-char (tier A) and 1-char (tier B) given names without verify blocking them.
   const base: VerifyContext = { ...ctx, requireTwoGivenChars: false };
-  const passes: {
+
+  // -------------------------------------------------------------------------
+  // Tier A — Two-char given names (preferred)
+  // -------------------------------------------------------------------------
+  // Three passes matching the single-char relaxation ladder.
+  const twoCharPasses: Array<{
+    vctx: VerifyContext;
+    elementFilter: (a: string | undefined, b: string | undefined) => boolean;
+    relaxed: boolean;
+  }> = [
+    // ① Both chars validated: ≥1 favourable, no avoid, soft gender ok.
+    {
+      vctx: base,
+      elementFilter: (a, b) => {
+        const hasFav =
+          (!!a && ctx.favourableElements.includes(a)) ||
+          (!!b && ctx.favourableElements.includes(b));
+        const noAvoid =
+          !(a && ctx.avoidElements.includes(a)) &&
+          !(b && ctx.avoidElements.includes(b));
+        return hasFav && noAvoid;
+      },
+      relaxed: false,
+    },
+    // ② Same element filter, but allowGenderLean relaxed.
+    {
+      vctx: { ...base, allowGenderLean: true },
+      elementFilter: (a, b) => {
+        const hasFav =
+          (!!a && ctx.favourableElements.includes(a)) ||
+          (!!b && ctx.favourableElements.includes(b));
+        const noAvoid =
+          !(a && ctx.avoidElements.includes(a)) &&
+          !(b && ctx.avoidElements.includes(b));
+        return hasFav && noAvoid;
+      },
+      relaxed: true,
+    },
+    // ③ Pathological: non-avoid + gender relaxed.
+    {
+      vctx: { ...base, allowGenderLean: true },
+      elementFilter: (a, b) =>
+        !(a && ctx.avoidElements.includes(a)) &&
+        !(b && ctx.avoidElements.includes(b)),
+      relaxed: true,
+    },
+  ];
+
+  for (const pass of twoCharPasses) {
+    if (out.length >= needed) break;
+    for (const line of ctx.pool) {
+      if (out.length >= needed) break;
+      const pairs = twoCharPairsFromLine(
+        line.chunkText,
+        surnameChar,
+        pass.vctx,
+        pass.elementFilter
+      );
+      for (const [a, b, span] of pairs) {
+        if (out.length >= needed) break;
+        // Skip if either individual char has already been used in a prior candidate.
+        if (usedChars.has(a) || usedChars.has(b)) continue;
+
+        const candidate: ComposerCandidate = {
+          lineId: line.chunkId,
+          charSpan: span,
+          surnameChar,
+          givenChars: [a, b],
+          meanings: {
+            [a]: `${elementOfChar(a) ?? "classical"} element`,
+            [b]: `${elementOfChar(b) ?? "classical"} element`,
+          },
+          poeticMeaning: `Drawn from ${line.author}'s 《${line.title}》, this name pairs two characters grounded in a real ${line.dynasty}-dynasty line.`,
+          masterComment: `A grounded 2-character name from a verified ${line.dynasty}-dynasty line.${
+            pass.relaxed ? relaxedNote : ""
+          }${fallbackNote}`,
+          rescueNote:
+            `${pass.relaxed ? relaxedNote : ""}${fallbackNote}`.trim() || undefined,
+        };
+
+        if (verifyCandidate(candidate, pass.vctx).ok) {
+          usedChars.add(a);
+          usedChars.add(b);
+          out.push(candidate);
+        }
+      }
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Tier B — Single-char given names (last resort)
+  // -------------------------------------------------------------------------
+  // usedChars is shared with Tier A — no char used in a 2-char pair appears in a 1-char name.
+  const singleCharPasses: Array<{
     vctx: VerifyContext;
     elementOk: (el: string | undefined) => boolean;
     relaxed: boolean;
-  }[] = [
-    // ① 喜用神 + 软性别合宜(默认)
+  }> = [
+    // ① favourable element + soft gender ok
     {
       vctx: base,
       elementOk: (el) => !!el && ctx.favourableElements.includes(el),
       relaxed: false,
     },
-    // ② 喜用神 + 放宽软性别倾向(仍守硬性别禁用)
+    // ② favourable element + gender lean relaxed
     {
       vctx: { ...base, allowGenderLean: true },
       elementOk: (el) => !!el && ctx.favourableElements.includes(el),
       relaxed: true,
     },
-    // ③ 病态兜底:非忌神 + 放宽软性别(几乎不触发)
+    // ③ non-avoid + gender lean relaxed
     {
       vctx: { ...base, allowGenderLean: true },
       elementOk: (el) => !!el && !ctx.avoidElements.includes(el),
@@ -62,7 +234,7 @@ export function rescueDeterministic(
     },
   ];
 
-  for (const pass of passes) {
+  for (const pass of singleCharPasses) {
     if (out.length >= needed) break;
     for (const line of ctx.pool) {
       if (out.length >= needed) break;
@@ -71,8 +243,7 @@ export function rescueDeterministic(
         if (usedChars.has(ch) || ch === surnameChar) continue;
         const el = elementOfChar(ch);
         if (!pass.elementOk(el)) continue;
-        if (!isNameSuitable(ch)) continue; // 预剪枝:EXTRA-only 字(霞/梅/玉)必被 verify ③a 拒,跳过空跑
-        // 硬不变量:黑名单 / 硬性别禁用 —— 任何 pass 都不放宽
+        if (!isNameSuitable(ch)) continue;
         if (isHardBlacklisted(ch)) continue;
         if (ctx.gender && isGenderForbidden(ch, ctx.gender)) continue;
 
@@ -83,15 +254,12 @@ export function rescueDeterministic(
           givenChars: [ch],
           meanings: { [ch]: `${el} element` },
           poeticMeaning: `Drawn from ${line.author}'s 《${line.title}》, this single-character name carries the ${el} essence with quiet classical grace.`,
-          masterComment: `A graceful single-character name (姓+1),verifiably grounded in a real ${line.dynasty}-dynasty line.${
+          masterComment: `A graceful single-character name (姓+1), verifiably grounded in a real ${line.dynasty}-dynasty line.${
             pass.relaxed ? relaxedNote : ""
           }${fallbackNote}`,
-          // 诚实标注另存一份:critic 若覆盖 masterComment(rescued 候选进 Critic 时),
-          // orchestrate 会把 rescueNote 追加回去,确保"系统兜底姓/放宽性别"披露不丢失。
-          rescueNote: `${pass.relaxed ? relaxedNote : ""}${fallbackNote}`.trim() || undefined,
+          rescueNote:
+            `${pass.relaxed ? relaxedNote : ""}${fallbackNote}`.trim() || undefined,
         };
-        // 用本 pass 的 vctx 校验:放宽 pass 会带 allowGenderLean,让偏阳字通过软性别关;
-        // 但接地/黑名单/硬性别禁用/五行/音律仍由 verifyCandidate 把守。
         if (verifyCandidate(candidate, pass.vctx).ok) {
           usedChars.add(ch);
           out.push(candidate);
@@ -99,5 +267,6 @@ export function rescueDeterministic(
       }
     }
   }
+
   return out;
 }

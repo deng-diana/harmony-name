@@ -178,6 +178,46 @@ describe("字库数据自洽性", () => {
     expect(isCelebrityName("王", ["睿"])).toBe(false); // 普通名
   });
 
+  // P0 modern-celebrity blacklist (expert audit 2026-07-05, naming finding #1).
+  // 林丹 (Olympic badminton champion) was shipped as a FEMALE name in evals.
+  // The check compares surname + givenChars.join("") against the full-name set,
+  // so 林丹 is caught only when givenChars = ["丹"] (rescue tier single-char).
+  it("modern-celebrity blacklist: 林丹/姚明/章子怡 all blocked", () => {
+    // 2-char celebrities (caught in rescue tier: surname + 1 given char)
+    expect(isCelebrityName("林", ["丹"])).toBe(true);   // badminton
+    expect(isCelebrityName("姚", ["明"])).toBe(true);   // basketball
+    expect(isCelebrityName("刘", ["翔"])).toBe(true);   // athletics
+    expect(isCelebrityName("王", ["菲"])).toBe(true);   // singer
+    expect(isCelebrityName("马", ["云"])).toBe(true);   // tech founder
+    expect(isCelebrityName("雷", ["锋"])).toBe(true);   // cultural hero
+    // 3-char celebrities (caught in main pipeline: surname + 2 given chars)
+    expect(isCelebrityName("章", ["子", "怡"])).toBe(true); // actress
+    expect(isCelebrityName("周", ["杰", "伦"])).toBe(true); // singer
+    expect(isCelebrityName("刘", ["德", "华"])).toBe(true); // actor
+  });
+
+  it("modern-celebrity blacklist: does NOT block innocent same-surname names", () => {
+    // 林 + 霁 (not 丹) → fine
+    expect(isCelebrityName("林", ["霁"])).toBe(false);
+    // 章 + 清 + 远 (not 子怡) → fine
+    expect(isCelebrityName("章", ["清", "远"])).toBe(false);
+  });
+
+  // P1 toponym / common-noun gate (expert audit 2026-07-05, naming finding #4).
+  it("forbiddenGivenNames blocks shipped toponyms and common nouns", () => {
+    expect(isForbiddenGivenName(["岳", "阳"])).toBe(true);  // city name
+    expect(isForbiddenGivenName(["沧", "海"])).toBe(true);  // common noun "vast sea"
+    expect(isForbiddenGivenName(["清", "淮"])).toBe(true);  // river name
+    expect(isForbiddenGivenName(["烟", "柳"])).toBe(true);  // stock scenery word
+    expect(isForbiddenGivenName(["白", "玉"])).toBe(true);  // material noun
+  });
+
+  it("forbiddenGivenNames does NOT block legitimate name pairs", () => {
+    expect(isForbiddenGivenName(["清", "远"])).toBe(false); // fine name
+    expect(isForbiddenGivenName(["云", "澄"])).toBe(false); // fine name
+    expect(isForbiddenGivenName(["思", "远"])).toBe(false); // fine name
+  });
+
   it("谐音忌名【带声调】精确匹配 —— 拦真谐音、不误杀近音好名", () => {
     expect(isForbiddenNameSound("吴", ["晴"])).toBe(true); // 吴晴 = wú qíng = 无情
     expect(isForbiddenNameSound("吴", ["清"])).toBe(false); // 吴清 = wú qīng ≠ 无情(声调不同)

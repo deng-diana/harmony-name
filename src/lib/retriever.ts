@@ -177,6 +177,50 @@ export async function searchPoems(
 const MAX_POOL_LINE_LEN = 34;
 
 /**
+ * Funerary / mourning poem title blacklist — deterministic sentiment gate.
+ *
+ * Traditional Chinese naming practice treats inauspicious source texts as
+ * disqualifying: naming a child from a dirge, lamentation, or death poem
+ * is 大忌 regardless of how bright a single line looks in isolation.
+ * The Critic is structurally blind to this because it only receives the
+ * bare line text (no title/poem context), so this must be a hard code gate.
+ *
+ * Coverage:
+ *   - Specific 楚辞 funerary texts: 招魂/大招 (soul-summoning for the dead),
+ *     国殇 (dirge for war dead), 哀郢/怀沙/悲回风/惜往日 (屈原's exile/death laments;
+ *     怀沙 is traditionally his suicide poem), 哀时命 (庄忌), 九思 Han imitations.
+ *   - Pattern-matched titles containing: 哀/悲/悼/挽/殇/哭/葬/招魂/墓/祭/伤/哭
+ *     (catches mourning poems across all dynasties).
+ *
+ * Note: 楚辞 virtue passages (离骚/九歌/橘颂) are NOT blocked — only the
+ * funerary sub-corpus. The 男楚辞 naming convention draws specifically from
+ * those virtue sections, not from the lament corpus.
+ *
+ * Source: poetry expert audit 2026-07-05 (result.guoxue.poetry.findings[1]).
+ */
+const FUNERARY_POEM_TITLES = new Set<string>([
+  // 楚辞 specific funerary texts
+  "招魂", "大招", "国殇", "哀郢", "怀沙", "悲回风", "惜往日",
+  "哀时命", "九思", "伤时", "哀岁", "逢尤", "悯上", "悼乱",
+  "七谏", "九怀", "九叹",
+  // Other well-known mourning / dirge titles
+  "祭妹文", "祭十二郎文", "吊古战场文",
+]);
+
+/** Pattern-based check for mourning/funerary poem titles. */
+const FUNERARY_TITLE_PATTERN = /哀|悲|悼|挽|殇|哭|葬|招魂|墓|祭文|伤逝/;
+
+/**
+ * Returns true if the poem title indicates a funerary or mourning work that
+ * must not be used as a naming source — regardless of individual line content.
+ */
+export function isFuneraryPoemTitle(title: string): boolean {
+  if (FUNERARY_POEM_TITLES.has(title)) return true;
+  if (FUNERARY_TITLE_PATTERN.test(title)) return true;
+  return false;
+}
+
+/**
  * 按候选字检索:返回真实含【任一】候选字的名句(coverage 越高、越经典越靠前)。
  * 调 006 迁移建的 RPC `search_lines_by_chars`。结果同样缓存(候选字组合有限)。
  */
@@ -266,6 +310,10 @@ export async function buildVerifiedPool(opts: {
     if (p.chunkId == null || seen.has(p.chunkId)) continue;
     const text = p.chunkText || "";
     if (text.length === 0 || text.length > MAX_POOL_LINE_LEN) continue; // 滤掉散文长段
+    // Sentiment gate: funerary/mourning poems must not be naming sources.
+    // Traditional practice (大忌) disqualifies dirges, laments, and soul-summoning
+    // texts outright — regardless of how bright an individual line may look.
+    if (isFuneraryPoemTitle(p.title)) continue;
     const pk = `${p.author}《${p.title}》`;
     if ((poemCount.get(pk) ?? 0) >= PER_POEM) continue;
     if ((authorCount.get(p.author) ?? 0) >= PER_AUTHOR) continue;

@@ -243,9 +243,50 @@ export async function runNamingPipeline(
     throwIfAborted(signal);
   }
 
-  // ③.6 Deterministic rescue: both composer rounds produced zero usable names →
-  // pure-code scan of the pool for favourable-element name-suitable chars.
-  // Produces exactly 1 surname+1 name (姓+1) — honest annotation in masterComment.
+  // ③.5 Relaxed-imagery composer retry — before falling to deterministic rescue,
+  // try ONE more composer call with:
+  //   - A smaller ask (4 candidates instead of 8) to reduce token load
+  //   - allowGenderLean=true in verification so neutral-leaning chars can pass
+  // This gives the LLM one last chance to produce a 2-given-char name on hard
+  // profiles (e.g. female with Water/Wood avoid-elements that wipe out most
+  // feminineLean chars). A neutral-leaning 2-char name beats a single-char one
+  // (2024 registry: double given names outnumber singles 25:1).
+  // Expert audit 2026-07-05 fix (naming finding #2, "rescue collapse").
+  if (verified.length < 3 && verified.length > 0) {
+    // Some passed — we only need to top up. Run relaxed verify on what we have
+    // before deciding whether to retry.
+    const relaxedCtx: VerifyContext = { ...ctx, allowGenderLean: true };
+    const extraFromRelaxed = passing(first.candidates, relaxedCtx).filter(
+      (c) => !verified.some((v) => v.givenChars.join("") === c.givenChars.join(""))
+    );
+    verified = dedupe([...verified, ...extraFromRelaxed], ctx);
+  }
+
+  if (verified.length === 0) {
+    // Absolute zero after both rounds: re-run composer with relaxed gender-lean.
+    composerCalls++;
+    const relaxedCtx: VerifyContext = { ...ctx, allowGenderLean: true };
+    const relaxedFeedback = [
+      "Previous candidates all failed verification.",
+      "This time: use only 4 candidates; relax imagery constraints; prefer any name-suitable character carrying a favourable element even if its gender lean is neutral (not strongly feminine or masculine).",
+    ].join(" ");
+    const relaxedRun = await safeComposer(profile, pool, relaxedFeedback, opts);
+    if (!analysis) analysis = relaxedRun.analysis;
+    const relaxedPassed = passing(relaxedRun.candidates, relaxedCtx);
+    verified = dedupe([...verified, ...relaxedPassed], ctx);
+    if (verified.length > 0) {
+      onNarrative(
+        `${verified.length} name${verified.length === 1 ? "" : "s"} found via relaxed imagery retry`,
+        3
+      );
+    }
+    throwIfAborted(signal);
+  }
+
+  // ③.6 Deterministic rescue: both composer rounds AND the relaxed retry
+  // produced zero usable names → pure-code scan of the pool for
+  // favourable-element name-suitable chars.
+  // Now tries 2-char pairs first (preferred), then single-char (last resort).
   // No LLM, near-instant, structurally grounded. The "never return 0 names" guarantee.
   if (verified.length === 0) {
     // Priority: user-specified surname > surname from any LLM candidate > fallback 李.

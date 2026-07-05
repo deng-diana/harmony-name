@@ -195,4 +195,46 @@ describe("verifyCandidate", () => {
     );
     expect(r.ok).toBe(true);
   });
+
+  // P1 word-boundary + order check (expert audit 2026-07-05, naming finding #3).
+  // The Composer extracted 珠明 from "沧海月明珠有泪" — the line reads 明 before 珠,
+  // so givenChars ["珠","明"] are in REVERSED order relative to the source line.
+  // This is now a hard rejection (deterministic code gate, not LLM judgment).
+  it("REJECTS givenChars in REVERSE order of the source line (珠明 from 明珠 line)", () => {
+    const r = verifyCandidate(
+      {
+        lineId: 30,
+        charSpan: "明珠",
+        surnameChar: "沈",
+        givenChars: ["珠", "明"], // reversed: line reads 明 then 珠
+      },
+      ctx({
+        pool: [poem(30, "沧海月明珠有泪")],
+        favourableElements: ["Water", "Fire"],
+        avoidElements: [],
+        gender: "female",
+      })
+    );
+    expect(r.ok).toBe(false);
+    expect(r.reasons.join()).toMatch(/顺序|颠倒/);
+  });
+
+  it("ALLOWS givenChars in the CORRECT order of the source line (明珠 from 明珠 line)", () => {
+    const r = verifyCandidate(
+      {
+        lineId: 30,
+        charSpan: "明珠",
+        surnameChar: "沈",
+        givenChars: ["明", "珠"], // correct order: line reads 明 then 珠
+      },
+      ctx({
+        pool: [poem(30, "沧海月明珠有泪")],
+        favourableElements: ["Water", "Fire"],
+        avoidElements: [],
+        gender: "female",
+      })
+    );
+    // May still fail for other reasons (element, gender lean), but NOT for order.
+    expect(r.reasons.join()).not.toMatch(/顺序|颠倒/);
+  });
 });
