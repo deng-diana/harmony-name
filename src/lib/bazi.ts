@@ -1,8 +1,14 @@
 import { Solar } from "lunar-javascript";
 
+// 子时 straddles midnight and must be split into two options per 早/晚子时 doctrine
+// (子平 convention, sect-2): 晚子时 23:00–24:00 keeps the CURRENT date's day pillar but
+// the hour stem derives from the NEXT day's 五鼠遁; 早子时 00:00–01:00 belongs entirely
+// to the current date. A single midpoint "00:00" would fall back across midnight after
+// true-solar-time correction, silently producing the PREVIOUS day's day pillar (P0 fix).
 export const SHICHEN_MAPPING = [
   { label: "Unknown (not sure)", value: "unknown" },
-  { label: "23:00 - 01:00 (Rat/子时)", value: "00:00" },
+  { label: "23:00–24:00 (Late Rat / 晚子时)", value: "23:30" },
+  { label: "00:00–01:00 (Early Rat / 早子时)", value: "00:30" },
   { label: "01:00 - 03:00 (Ox/丑时)", value: "02:00" },
   { label: "03:00 - 05:00 (Tiger/寅时)", value: "04:00" },
   { label: "05:00 - 07:00 (Rabbit/卯时)", value: "06:00" },
@@ -297,9 +303,15 @@ function analyzeStrength(
   for (const [grp, el] of ZHI_HE) if (grp.every((z) => zhiSet.has(z))) tally(el, 1.5);
 
   const ratio = support / (support + drain || 1); // 0~1
-  // 通根:日主五行是否为任一地支的【本气】(藏干首位)—— 从格判定的关键。
-  const hasRoot = zhis.some(
-    (z) => GAN_WUXING[(ZHI_HIDE_GAN[z] || [])[0]] === dayMaster
+  // 通根:日主五行是否藏于任一地支的【本气或中气】(藏干前两位)—— 从格判定的关键。
+  // 《子平真诠》: 余气(index 2)力量过弱,从弱/从强门槛采用"中气以上方作根"保守口径。
+  // Classical: a stem is rooted in any branch whose 本气 (index 0) or 中气 (index 1)
+  // hidden stem shares the same element; pure 余气 (index 2) is excluded so the follow-
+  // weak gate does not fire when a real, if minor, root exists (P2 fix).
+  const hasRoot = zhis.some((z) =>
+    (ZHI_HIDE_GAN[z] || [])
+      .slice(0, 2)
+      .some((hg) => GAN_WUXING[hg] === dayMaster)
   );
 
   let strength = "Balanced";
@@ -316,18 +328,47 @@ function analyzeStrength(
   let favourable: string[] = [];
   let avoid: string[] = [];
 
-  // 从弱/从势格(命理 #1 增强):日主【极弱(ratio<0.12)且无本气通根】时,扶抑法会判
+  // 从弱/从势格(命理 #1 增强):日主【极弱(ratio<0.12)且无本气/中气通根】时,扶抑法会判
   // Weak 且喜印比 —— 但从格的喜忌【与扶抑相反】:不可逆其大势,当顺势喜克泄耗、忌印比。
   // 旧逻辑对这类(约 3-8% 极端盘)会给出【完全反向】的喜忌(取名用字五行整反)。
   // 安全处理:不激进翻转(误判风险),而是顺势取克泄耗为喜、avoid 留空(等同 Balanced 的
   // 软处理)—— 既消除"被迫印比"的硬错,又不破坏 favourable∩avoid=∅ 等不变量。
   const isFollowWeak = ratio < 0.12 && !hasRoot;
+
+  // 从强/专旺格(mirror of isFollowWeak, P2 fix): when ONE element utterly dominates
+  // (ratio > 0.88) AND that element is the day master's own AND the month branch
+  // concurs (月令 concurrence — 本气 or branch element = dayMaster), the chart
+  // follows the dominant qi: favour 比劫/印 (and 食伤 to vent), strict avoid = [].
+  // 《滴天髓》: 从旺者,顺其气势,逆之则凶. Same soft/conservative style as isFollowWeak.
+  // Example: 曲直格 — 甲日 寅卯辰全 木透干 → favourable = [Wood, Water, Fire].
+  const dominantEl = Object.entries(elemWeight).reduce((a, b) =>
+    a[1] >= b[1] ? a : b
+  )[0];
+  const monthConcurs =
+    ZHI_WUXING[monthZhi] === dayMaster ||
+    GAN_WUXING[(ZHI_HIDE_GAN[monthZhi] || [])[0]] === dayMaster;
+  const isFollowStrong =
+    !isFollowWeak &&
+    ratio > 0.88 &&
+    dominantEl === dayMaster &&
+    monthConcurs;
+
   if (isFollowWeak) {
     strength = "Balanced"; // 对外标签软化(schema 仅 Weak/Strong/Balanced;从格归 Balanced 软处理)
     favourable = [
       relations.controlledBy, // 官杀
       relations.generate, // 食伤(泄秀)
       relations.control, // 财
+    ];
+    avoid = [];
+  } else if (isFollowStrong) {
+    // 从强/专旺: follow the dominant element — favour 比劫 + 印 + 食伤(泄秀),
+    // no hard avoid (same soft label as 从弱 to keep schema clean).
+    strength = "Balanced";
+    favourable = [
+      dayMaster, // 比劫
+      relations.generatedBy, // 印(resource that feeds the dominant)
+      relations.generate, // 食伤(venting channel — classically included in 从旺)
     ];
     avoid = [];
   } else if (strength === "Weak") {
@@ -403,6 +444,15 @@ function analyzeStrength(
         favourable.push(boost); // 冲突:降级到末位(次要之喜)
       } else {
         favourable.unshift(boost); // 不冲突:调候优先,顶到首位
+      }
+    } else if (!conflict && !isFollowWeak) {
+      // 调候之神已在 favourable 中但不在首位:《穷通宝鉴》"调候为急" 要求其领首。
+      // When the climatic-boost element is already in the favourable list but not at
+      // position 0, move it to the front (P2 fix — previously a no-op here).
+      const i = favourable.indexOf(boost);
+      if (i > 0) {
+        favourable.splice(i, 1);
+        favourable.unshift(boost);
       }
     }
   }
@@ -509,7 +559,18 @@ export function getBeijingWallClock(
 ): { year: number; month: number; day: number; hour: number; minute: number } {
   const [y, mo, d] = dateString.split("-").map(Number);
   const wallAsUTC = Date.UTC(y, (mo || 1) - 1, d || 1, hour, minute, 0);
-  const offsetMin = getTimezoneOffsetMinutes(timezone, new Date(wallAsUTC));
+  // Two-pass wall→UTC resolution (P2 fix for DST transition 1-hour error).
+  // Single-pass bug: sampling the timezone offset at "wallAsUTC" (= wall time treated
+  // as UTC) gives the wrong offset near DST transitions (java.time / Temporal pattern).
+  // Pass 1: estimate offset at first-guess UTC (= wall-as-UTC).
+  const offset0 = getTimezoneOffsetMinutes(timezone, new Date(wallAsUTC));
+  const utcEst = wallAsUTC - offset0 * 60000;
+  // Pass 2: re-sample at the corrected UTC estimate.
+  const offset1 = getTimezoneOffsetMinutes(timezone, new Date(utcEst));
+  // If they agree, we are away from a transition — use as-is.
+  // If they differ (spring-forward gap), offset1 was sampled at the pre-transition UTC,
+  // which is the correct 'earlier' disambiguation (Temporal spec). Use offset1.
+  const offsetMin = offset0 === offset1 ? offset0 : offset1;
   const utcInstant = wallAsUTC - offsetMin * 60000;
   const beijing = new Date(utcInstant + 480 * 60000); // +8h
   return {
