@@ -206,7 +206,15 @@ export async function runNamingPipeline(
   // ③ 校验;只有 0 个通过时才带反馈重生成一轮(evaluator-optimizer lightweight retry).
   // 1–2 verified names are accepted as-is — no slow rescue ladder.
   onProgress(3, TOTAL, "Verifying authenticity…");
-  let verified = passing(first.candidates, ctx);
+  // Pre-filter: drop any candidate the Composer self-certified as not sounding like a
+  // person's name (soundsLikeName === false). This is the cheap structural gate for the
+  // name-not-noun failure mode (清池/柳绿 class). undefined = model omitted the field →
+  // give it the benefit of the doubt and let the verify gate decide.
+  const firstFiltered = {
+    ...first,
+    candidates: first.candidates.filter((c) => c.soundsLikeName !== false),
+  };
+  let verified = passing(firstFiltered.candidates, ctx);
   round1Verified = verified.length;
   // Grounded narration: the real survival count against the original poems.
   if (round1Verified >= 1) {
@@ -220,7 +228,7 @@ export async function runNamingPipeline(
     // Narrate the revision round: none survived, so the master retries with feedback.
     onNarrative("None survived — the master revises with the failure feedback", 3);
     composerCalls++;
-    const failed = first.candidates
+    const failed = firstFiltered.candidates
       .map((c) => ({ c, r: verifyCandidate(c, ctx) }))
       .filter((x) => !x.r.ok)
       .slice(0, 6)
@@ -231,7 +239,8 @@ export async function runNamingPipeline(
       .join("\n");
     const retry = await safeComposer(profile, pool, failed, opts);
     if (!analysis) analysis = retry.analysis;
-    verified = dedupe([...verified, ...passing(retry.candidates, ctx)], ctx);
+    const retryFiltered = retry.candidates.filter((c) => c.soundsLikeName !== false);
+    verified = dedupe([...verified, ...passing(retryFiltered, ctx)], ctx);
     if (verified.length > 0) {
       onNarrative(
         `${verified.length} name${
@@ -272,7 +281,8 @@ export async function runNamingPipeline(
     ].join(" ");
     const relaxedRun = await safeComposer(profile, pool, relaxedFeedback, opts);
     if (!analysis) analysis = relaxedRun.analysis;
-    const relaxedPassed = passing(relaxedRun.candidates, relaxedCtx);
+    const relaxedFiltered = relaxedRun.candidates.filter((c) => c.soundsLikeName !== false);
+    const relaxedPassed = passing(relaxedFiltered, relaxedCtx);
     verified = dedupe([...verified, ...relaxedPassed], ctx);
     if (verified.length > 0) {
       onNarrative(

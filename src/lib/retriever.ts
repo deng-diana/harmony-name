@@ -313,7 +313,11 @@ export async function buildVerifiedPool(opts: {
   // composer verifiably harvests far fewer word-pairs from long ci lines than
   // from compact 五言/七言 couplets — eval always-3 dropped 3/8 → 1/8. Cap long
   // lines to a minority so classic couplets stay the pool's backbone.
-  const LONG_LINE_LEN = 14;
+  // Threshold lowered 14→12 (2026-07-05 follow-up): classic 五言 couplet halves
+  // are ≤10 chars (含标点), 七言 ≤14 — but 11-12-char ci lines are still
+  // multi-clause fragments that rarely yield clean 2-char pairs.  ≤12 keeps
+  // tight couplets as the backbone while relaxing slightly from 10.
+  const LONG_LINE_LEN = 12;
   const MAX_LONG_LINES = Math.floor((opts.cap ?? 30) * 0.3);
   let longLines = 0;
   const seen = new Set<number>();

@@ -26,18 +26,6 @@
   --color-seal: #9e2b25;
   --color-seal-soft: #b8433c;
 
-  /* —— CJK typefaces —— */
-  /* Ma Shan Zheng: brush-written kaishu — the 毛笔 display face for hanzi.
-     --font-brush-gf is set on <body> by next/font (Ma_Shan_Zheng).
-     The Tailwind utility 'font-brush' resolves via that body variable.
-     System kaiti fallbacks ensure graceful degradation. */
-  --font-brush: var(--font-brush-gf), "Kaiti SC", "KaiTi", serif;
-
-  /* Noto Serif SC: museum-caption serif for reading-size Chinese
-     (poem lines, poet names, titles). Source Han Serif by Adobe/Google.
-     --font-hanzi-gf is set on <body> by next/font (Noto_Serif_SC). */
-  --font-hanzi: var(--font-hanzi-gf), "Songti SC", "SimSun", serif;
-
   /* —— Easing curves (restrained, natural deceleration with light spring) —— */
   --ease-soft: cubic-bezier(0.22, 1, 0.36, 1);      /* elegant deceleration */
   --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);  /* light rebound */
@@ -46,6 +34,20 @@
   --animate-fade-in: fade-in var(--dur-slow) var(--ease-soft) both;
   --animate-fade-in-up: fade-in-up var(--dur-slow) var(--ease-soft) both;
   --animate-reveal: reveal var(--dur-reveal) var(--ease-soft) both;
+}
+
+/* —— CJK typefaces — MUST live in @theme inline —— */
+/* These tokens reference runtime CSS variables that next/font attaches to
+   <body> (--font-brush-gf / --font-hanzi-gf). Tailwind v4 only resolves
+   var()-referencing theme tokens when the block is declared `inline`;
+   in a plain @theme block the token is dropped and the font-brush/font-hanzi
+   utilities silently never generate (bug: prod names rendered in system
+   fallback, 2026-07-05). */
+@theme inline {
+  /* Ma Shan Zheng: brush-written kaishu — the 毛笔 display face for hanzi. */
+  --font-brush: var(--font-brush-gf), "Kaiti SC", "KaiTi", serif;
+  /* Noto Serif SC: museum-caption serif for reading-size Chinese. */
+  --font-hanzi: var(--font-hanzi-gf), "Songti SC", "SimSun", serif;
 }
 
 /* —— Animation durations (semantic; shared across transition/animation) —— */

@@ -210,6 +210,9 @@ describe("字库数据自洽性", () => {
     expect(isForbiddenGivenName(["清", "淮"])).toBe(true);  // river name
     expect(isForbiddenGivenName(["烟", "柳"])).toBe(true);  // stock scenery word
     expect(isForbiddenGivenName(["白", "玉"])).toBe(true);  // material noun
+    // Live prod offenders (Wood/female/邓 audit 2026-07-05): scenery-noun class.
+    expect(isForbiddenGivenName(["清", "池"])).toBe(true);  // "a clear pond" — scenery noun
+    expect(isForbiddenGivenName(["柳", "绿"])).toBe(true);  // "willow-green" — color phrase
   });
 
   it("forbiddenGivenNames does NOT block legitimate name pairs", () => {
