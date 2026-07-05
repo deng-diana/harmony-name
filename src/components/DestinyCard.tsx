@@ -1,22 +1,22 @@
 "use client";
 
-import { useState } from "react";
-import { ChevronDown } from "lucide-react";
 import type { BaziResult } from "@/lib/bazi";
 import { ARCHETYPES } from "@/lib/bazi";
 import { ELEMENTS, type Element } from "@/lib/elements";
 import { HighlightText } from "./HighlightText";
 import { ShareElementButton } from "./ElementShareCard";
 import { ElementCompatibility } from "./ElementCompatibility";
-import { cn } from "@/lib/cn";
 
 /**
- * 极简身份卡(2026-06-18 重构):面向看不懂命理的外国用户。
- * 只留【身份】(原型 + 诗意描述)+【一句大白话解读】(季节性格 + 你被什么点亮)。
- * 刻意去掉:五行轮盘/数字、"Weak"、"五行循环"footnote、五族相性表 —— 都是术语/杂讯。
+ * DestinyCard — the user's elemental identity (left panel on the results page).
+ *
+ * Museum redesign (2026-07-05):
+ * - Emoji archetype glyph → brush-font hanzi (木/火/土/金/水) on the ink header
+ * - Season · direction chip below the hanzi
+ * - 相生相克 section is always visible (no accordion) — story-first layout
  */
 
-// 喜用神 → 大白话、温暖、零术语的一句话(替代 ELEMENTS.essence 里偏术语的措辞)。
+// Plain-language mapping for the favourable elements — zero jargon.
 const FRIENDLY_ELEMENT: Record<string, string> = {
   Water: "calm, flowing water — depth, quiet, and a steady inner current",
   Wood: "growth and new ideas — the things that keep reaching upward",
@@ -28,22 +28,34 @@ const FRIENDLY_ELEMENT: Record<string, string> = {
 export function DestinyCard({ baziResult }: { baziResult: BaziResult }) {
   const dayMaster = baziResult.dayMaster;
   const archetype = ARCHETYPES[dayMaster as keyof typeof ARCHETYPES];
-  const glyph = ELEMENTS[dayMaster as Element]?.archetypeGlyph ?? "✦";
+  const elData = ELEMENTS[dayMaster as Element];
   const fav = baziResult.favourableElements;
 
-  // 季节能量(一句友好的"为什么你是这样"),其余命理细节一律不展示
+  // Seasonal energy line — one friendly sentence about "why you are this way".
   const seasonal = baziResult.coreExplanation.points.find((p) =>
     /season/i.test(p.label)
   );
 
-  // "Who you naturally click with" — collapsed by default to keep the naming flow clean.
-  const [compatOpen, setCompatOpen] = useState(false);
-
   return (
     <section className="bg-paper-raised rounded-3xl shadow-soft border border-mist/70 overflow-hidden">
-      {/* ===== 身份(唯一的"主角")===== */}
+      {/* ── IDENTITY HEADER (ink background) ─────────────────────────────── */}
       <div className="bg-ink p-8 md:p-10 text-paper text-center">
-        <div className="text-6xl mb-3 leading-none">{glyph}</div>
+        {/* Brush-font element hanzi replaces emoji — the museum move */}
+        <div
+          className="font-brush text-8xl leading-none text-paper/95 mb-2"
+          lang="zh-Hans"
+          aria-label={dayMaster}
+        >
+          {elData?.hanzi ?? "✦"}
+        </div>
+
+        {/* Season · direction chip below the hanzi */}
+        {elData && (
+          <div className="inline-block border border-gold/60 text-gold text-[11px] tracking-[0.25em] uppercase px-3 py-1 mb-3">
+            {elData.season} · {elData.direction}
+          </div>
+        )}
+
         <p className="text-gold text-xs font-bold uppercase tracking-[0.2em] mb-3">
           {archetype.subtitle}
         </p>
@@ -60,18 +72,20 @@ export function DestinyCard({ baziResult }: { baziResult: BaziResult }) {
         />
       </div>
 
-      {/* ===== 一句大白话解读:你为什么是这样 + 什么点亮你 ===== */}
+      {/* ── BODY ──────────────────────────────────────────────────────────── */}
       <div className="p-8 md:p-10">
+        {/* Seasonal context sentence */}
         {seasonal && (
           <p className="text-base text-ink-soft leading-relaxed mb-7">
             <HighlightText text={seasonal.content} />
           </p>
         )}
 
+        {/* "You come alive around" — favourable elements */}
         {fav.length > 0 && (
           <>
             <p className="text-ink font-medium mb-4">You come alive around:</p>
-            <ul className="space-y-3.5">
+            <ul className="space-y-3.5 mb-8">
               {fav.map((e) => {
                 const t = ELEMENTS[e as Element];
                 return (
@@ -79,8 +93,13 @@ export function DestinyCard({ baziResult }: { baziResult: BaziResult }) {
                     key={e}
                     className="flex items-start gap-3 text-ink-soft leading-relaxed"
                   >
-                    <span className="text-xl leading-none shrink-0">
-                      {t?.emoji ?? "✦"}
+                    {/* Brush hanzi instead of emoji */}
+                    <span
+                      className="font-brush text-xl leading-none shrink-0"
+                      lang="zh-Hans"
+                      aria-label={e}
+                    >
+                      {t?.hanzi ?? "✦"}
                     </span>
                     <span>{FRIENDLY_ELEMENT[e] ?? t?.essence ?? e}</span>
                   </li>
@@ -90,34 +109,12 @@ export function DestinyCard({ baziResult }: { baziResult: BaziResult }) {
           </>
         )}
 
-        {/* ===== Who you naturally click with (collapsible, default closed) ===== */}
-        <div className="mt-8 border-t border-mist/70 pt-6">
-          <button
-            type="button"
-            onClick={() => setCompatOpen((v) => !v)}
-            aria-expanded={compatOpen}
-            className="flex w-full items-center justify-between gap-3 text-left text-ink font-medium hover:text-gold transition-colors"
-          >
-            <span>Who you naturally click with</span>
-            <ChevronDown
-              className={cn(
-                "w-5 h-5 shrink-0 transition-transform duration-300",
-                compatOpen && "rotate-180"
-              )}
-              aria-hidden
-            />
-          </button>
-
-          {compatOpen && (
-            <div className="animate-fade-in">
-              <ElementCompatibility
-                dayMaster={dayMaster}
-                favourableElements={baziResult.favourableElements}
-                avoidElements={baziResult.avoidElements}
-              />
-            </div>
-          )}
-        </div>
+        {/* ── 相生相克 RELATIONS — always visible, story-first ──────────── */}
+        <ElementCompatibility
+          dayMaster={dayMaster}
+          favourableElements={baziResult.favourableElements}
+          avoidElements={baziResult.avoidElements}
+        />
       </div>
     </section>
   );
