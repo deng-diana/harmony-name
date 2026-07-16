@@ -1,0 +1,43 @@
+# Supabase free-tier keepalive
+# =============================
+# Supabase pauses a free project after ~7 days without "sufficient activity".
+# The Vercel Cron heartbeat (vercel.json → /api/heartbeat) fires only once a
+# day (Hobby-plan limit), which proved not to be enough — Supabase sent a
+# pause warning on 2026-07-16 despite it. This workflow adds a second,
+# independent keepalive: every 6 hours GitHub Actions runs one tiny REST
+# query against the database through Supabase's API gateway, which counts
+# as real project activity.
+#
+# Secrets used (Settings → Secrets and variables → Actions):
+#   SUPABASE_URL      — the project URL (public by design, but kept as a
+#                       secret for hygiene)
+#   SUPABASE_ANON_KEY — the anon key (also public by design: it ships in
+#                       the browser bundle; RLS is what protects the data)
+#
+# Note: GitHub disables scheduled workflows in public repos after 60 days
+# with no repo activity — it emails a warning first. Any commit re-enables.
+name: Supabase keepalive
+
+on:
+  schedule:
+    # Every 6 hours, offset from the top of the hour (GitHub delays
+    # exactly-on-the-hour crons under load).
+    - cron: "17 2,8,14,20 * * *"
+  # Manual trigger, so the ping can be tested from the Actions tab.
+  workflow_dispatch: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Query Supabase REST (resets the idle timer)
+        run: |
+          code=$(curl -s -o /tmp/body -w "%{http_code}" \
+            "${{ secrets.SUPABASE_URL }}/rest/v1/generations?select=public_slug&is_public=eq.true&limit=1" \
+            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}")
+          echo "HTTP $code"
+          cat /tmp/body; echo
+          # Fail loudly on anything but 200 so GitHub emails the owner.
+          [ "$code" = "200" ]

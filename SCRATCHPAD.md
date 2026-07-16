@@ -7,6 +7,32 @@
 
 ---
 
+## 2026-07-16 — Supabase pause warning + expired domain (branch fix/supabase-keepalive)
+
+Supabase emailed a pause warning (free tier, >7 days "insufficient activity")
+even though the daily Vercel Cron heartbeat (vercel.json → /api/heartbeat) was
+correctly registered, deployed, and secret-gated. Investigation:
+
+- **Root causes (two, compounding):** (1) `harmonyname.com` registration
+  EXPIRED 2026-07-13 at Namecheap — DNS flipped to the registrar parking IP
+  (216.227.142.171), so all user traffic died; the Vercel deployment itself
+  stayed healthy at harmony-name.vercel.app. (2) The Hobby-plan Vercel cron
+  fires only once/day, which evidently doesn't clear Supabase's "sufficient
+  activity" bar on its own (warning arrived with the cron registered + the
+  route verified live, 401-gating correctly).
+- **Immediate mitigation:** ran one service-role read against `poems`
+  (4130 rows, no error) — idle timer reset, project confirmed not paused.
+- **Durable fix (this branch):** `.github/workflows/supabase-keepalive.yml` —
+  GitHub Actions pings Supabase REST every 6h with the anon key (RLS-safe:
+  reads only the public-share slug column), fails loudly on non-200 so GitHub
+  emails the owner. Verified the exact query locally: HTTP 200. Repo secrets
+  `SUPABASE_URL` / `SUPABASE_ANON_KEY` set via gh CLI.
+- **User action still required:** renew harmonyname.com at Namecheap (in the
+  ~27-day grace window — normal price now, ~$70 redemption fee later), then
+  confirm DNS records still point at Vercel.
+- Also confirmed PR #26 (brush font + name-not-noun + feminine lean) is merged
+  to main; post-merge prod verification still pending.
+
 ## 2026-07-05 — expert-audit naming/poetry fix session (branch fix/naming-expert-audit, SHA 5f75e12)
 
 Six-expert audit (3 sinology + 3 design) produced findings across bazi/naming/poetry/UX.
