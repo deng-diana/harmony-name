@@ -28,6 +28,7 @@ import { SurnameSelector } from "@/components/SurnameSelector";
 import { GenerationProgress } from "@/components/GenerationProgress";
 import { ShareNameButton } from "@/components/ShareCard";
 import { Button } from "@/components/ui/Button";
+import { SITE_URL } from "@/lib/site";
 
 // sessionStorage key for form persistence across the login round-trip.
 // No PII concern — it never leaves the browser.
@@ -356,9 +357,7 @@ export default function Home() {
 
     // Per-result public page URL when the server handed back a slug; else the
     // ShareNameButton falls back to the homepage.
-    const shareUrl = shareSlug
-      ? `https://harmonyname.com/n/${shareSlug}`
-      : undefined;
+    const shareUrl = shareSlug ? `${SITE_URL}/n/${shareSlug}` : undefined;
 
     return (
       <div className="min-h-screen bg-paper py-12 px-4 sm:px-6 font-sans text-ink">

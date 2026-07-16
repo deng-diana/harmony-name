@@ -21,6 +21,7 @@ import { useRef, useState } from "react";
 import { Share2, Download, X } from "lucide-react";
 import type { NameOption } from "@/types";
 import { segmentPoem, type PoemSegment } from "@/lib/render-poem";
+import { SITE_URL, SITE_HOST } from "@/lib/site";
 
 interface Archetype {
   title: string;
@@ -69,7 +70,7 @@ export function ShareNameButton({
   /** Per-result public page URL (/n/<slug>). Falls back to homepage if absent. */
   shareUrl?: string;
 }) {
-  const targetUrl = shareUrl ?? "https://harmonyname.com";
+  const targetUrl = shareUrl ?? SITE_URL;
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -313,7 +314,7 @@ export function ShareNameButton({
                     className="uppercase tracking-[0.25em] text-ink-faint"
                     style={{ fontSize: "9px" }}
                   >
-                    Every name lives in a poem · harmonyname.com
+                    Every name lives in a poem · {SITE_HOST}
                   </div>
                 </div>
 

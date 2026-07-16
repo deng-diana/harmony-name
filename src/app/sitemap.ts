@@ -1,9 +1,10 @@
 import type { MetadataRoute } from "next";
+import { SITE_URL } from "@/lib/site";
 
 // Sitemap for the real public routes only. The old public/sitemap.xml listed
 // two 404 routes (/name-generator, /name-history); this replaces it and stays
 // in sync with the App Router pages that actually exist.
-const BASE_URL = "https://harmonyname.com";
+const BASE_URL = SITE_URL;
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const lastModified = new Date();

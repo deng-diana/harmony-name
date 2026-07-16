@@ -11,6 +11,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getPack } from "@/lib/creditPacks";
 import { checkoutRatelimit } from "@/lib/ratelimit";
 import { z } from "zod";
+import { SITE_URL } from "@/lib/site";
 
 export const dynamic = "force-dynamic";
 
@@ -77,7 +78,7 @@ export async function POST(request: Request) {
   // in dev/preview fall back to the request's own origin.
   const origin =
     process.env.VERCEL_ENV === "production"
-      ? "https://harmonyname.com"
+      ? SITE_URL
       : new URL(request.url).origin;
 
   const session = await stripe.checkout.sessions.create({

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Lora, Ma_Shan_Zheng, Noto_Serif_SC } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
+import { SITE_URL } from "@/lib/site";
 import "./globals.css";
 
 // Latin body serif — unchanged; provides the foundational text face.
@@ -40,7 +41,7 @@ const SITE_DESCRIPTION =
   "A Chinese name with a real source. Every character is verified to come from a real line of classical poetry — read from your birth chart (Bāzì), never invented.";
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://harmonyname.com"),
+  metadataBase: new URL(SITE_URL),
   title: {
     default: "HarmonyName — A Chinese name with a real source",
     template: "%s · HarmonyName",
