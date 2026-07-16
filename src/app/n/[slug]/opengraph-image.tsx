@@ -19,6 +19,7 @@
 import { ImageResponse } from "next/og";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import type { ApiResponse } from "@/types";
+import { SITE_HOST } from "@/lib/site";
 
 export const runtime = "nodejs";
 export const size = { width: 1200, height: 630 };
@@ -217,7 +218,7 @@ export default async function Image({
               fontFamily: bodyFontFamily,
             }}
           >
-            harmonyname.com
+            {SITE_HOST}
           </div>
         </div>
       ),

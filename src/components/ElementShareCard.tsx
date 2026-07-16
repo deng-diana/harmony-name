@@ -17,6 +17,7 @@
 import { useRef, useState } from "react";
 import { Sparkles, Share2, Download, X } from "lucide-react";
 import { ELEMENTS, type Element } from "@/lib/elements";
+import { SITE_URL, SITE_HOST } from "@/lib/site";
 
 interface Archetype {
   title: string;
@@ -99,7 +100,7 @@ export function ShareElementButton({
         await navigator.share({
           files: [file],
           text: shareText,
-          url: "https://harmonyname.com",
+          url: SITE_URL,
         });
       } else {
         download(blob);
@@ -198,7 +199,7 @@ export function ShareElementButton({
                   What element are you?
                 </p>
                 <div className="text-[10px] uppercase tracking-[0.2em] text-paper/40">
-                  harmonyname.com
+                  {SITE_HOST}
                 </div>
               </div>
             </div>

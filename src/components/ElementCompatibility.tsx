@@ -1,5 +1,6 @@
 import { ARCHETYPES } from "@/lib/bazi";
 import { ELEMENTS, type Element } from "@/lib/elements";
+import { SITE_HOST } from "@/lib/site";
 import {
   computeCompatibility,
   type Energy,
@@ -189,7 +190,7 @@ export function ElementCompatibility({
 
       {/* Attribution whisper for screenshots */}
       <div className="text-center text-[10px] tracking-[0.25em] uppercase text-ink-faint pt-5">
-        ✦ harmonyname.com
+        ✦ {SITE_HOST}
       </div>
     </section>
   );
